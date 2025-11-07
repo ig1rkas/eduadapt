@@ -157,7 +157,4 @@ def deepseekApi(prompt: str) -> requests:
         return {"status": response.status_code, "reason": response.text}
 
 
-# app.run(debug=True)
-
-if __name__ == "__main__":
-    print(deepseekApi())
+app.run(debug=True)
