@@ -1,6 +1,7 @@
 import requests
 
 from flask import Flask, request, jsonify
+from datetime import datetime
 
 from data import db_session
 from data.users import User
@@ -29,25 +30,35 @@ def registration():
     if request.method == "POST":
         data = request.json()
         db_sess = db_session.create_session()
-        other = db_sess.query(User).filter(User.name == data['name']).first()
+        other = db_sess.query(User).filter(
+            User.name == data['username']).first()
         curr_id = db_sess.query(User).all()[-1].id + 1
         if other:
-            return jsonify({"status": 500, "reason": "Use other login"})
+            return jsonify({"status": 500, "error": "Use other login", "success": False})
 
         user = User()
-        user.name = data['name']
+        user.username = data['username']
         user.password = data['password']
         user.phone_number = data['phone_number']
         user.native_lang = data['native_lang']
-        user.lang_lvl = data['lang_lvl']
+        user.russian_level = data['russian_level']
         db_sess.add(user)
         db_sess.commit()
         db_sess.close()
 
-        return jsonify({"status": 200, "data": "User registrated"})
+        return jsonify({"status": 200, 
+                        "error": None, 
+                        "success": True, 
+                        "data": {"id": user.id, 
+                                 "username": user.username, 
+                                 "native_language": user.native_lang, 
+                                 "phone_number": user.phone_number, 
+                                 "russian_level": user.russian_level, 
+                                 "registration_date": datetime().date()}
+                        })
 
     else:
-        return jsonify({"status": 500, "reason": "Use the POST method"})
+        return jsonify({"status": 500, "error": "Use the POST method", "success": False})
 
 
 @app.route("/api/login", methods=['GET'])
@@ -61,31 +72,50 @@ def login():
     if request.method == 'GET':
         data = request.json()
         db_sess = db_session.create_session()
-        if "name" in data:
+        if "username" in data:
             user = db_sess.query(User).filter(
-                User.name == data['name']).first()
+                User.username == data['username']).first()
             if not user:
-                answer = {"status": 500, "data": "Wrong username"}
+                answer = {"status": 500, "error": "Wrong username", "success": False}
             else:
                 if data['password'] == user.password:
-                    answer = {"status": 200, "data": "OK"}
+                    answer = {"status": 200, 
+                              "data": {"id": user.id, 
+                                 "username": user.username, 
+                                 "native_language": user.native_lang, 
+                                 "phone_number": user.phone_number, 
+                                 "russian_level": user.russian_level, 
+                                 },
+                              "success": True,
+                              "error": None
+                              }
                 else:
-                    answer = {"status": 500, 'data': "wrong password"}
+                    answer = {"status": 500, 'error': "wrong password", "success": False}
         elif 'phone_number' in data:
             user = db_sess.query(User).filter(
                 User.phone_number == data['phone_number']).first()
             if not user:
-                answer = {"status": 500, "data": "Wrong phone number"}
+                answer = {"status": 500, "error": "Wrong phone number", "success": False}
             else:
                 if data['password'] == user.password:
-                    answer = {"status": 200, "data": "OK"}
+                    answer = {"status": 200, 
+                              "data": {"id": user.id, 
+                                 "username": user.username, 
+                                 "native_language": user.native_lang, 
+                                 "phone_number": user.phone_number, 
+                                 "russian_level": user.russian_level, 
+                                 },
+                              "success": True,
+                              "error": None
+                              }
                 else:
-                    answer = {"status": 500, 'data': "wrong password"}
+                    answer = {"status": 500, 'error': "wrong password", "success": False}
         else:
             answer = {"status": 500,
-                      "data": "Give the phone number or username in data"}
+                      "error": "Give the phone number or username in data",
+                      "success": False}
     else:
-        answer = {"status": 500, 'reason': 'Use GET method'}
+        answer = {"status": 500, 'error': 'Use GET method', "success": False}
     db_sess.close()
 
     return jsonify(answer)
@@ -140,7 +170,7 @@ def deepseekApi(user_prompt: str, system_prompt="You are helpful assistant") -> 
         "Authorization": f"Bearer {API_KEY}"
     }
     data = {
-        "model": "deepseek-chat",  
+        "model": "deepseek-chat",
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}

@@ -9,8 +9,8 @@ class User(SqlAlchemyBase):
     __tablename__ = 'users'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(length=100), nullable=False)
+    username = Column(String(length=100), nullable=False)
     password = Column(String(length=100), nullable=False)
-    phone_number = Column(String(length=11), nullable=False)
-    lang_lvl = Column(String(length=2), nullable=False)
     native_lang = Column(String(length=100), nullable=False)
+    phone_number = Column(String(length=11), nullable=False)
+    russian_level = Column(String(length=2), nullable=False)
