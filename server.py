@@ -19,7 +19,7 @@ def api():
     return jsonify({"status": 200, "data": "You are in api"})
 
 
-@app.route("/api/regisration", methods=["POST"])
+@app.route("/api/auth/regisration", methods=["POST"])
 def registration():
     """
     registration function
@@ -61,7 +61,7 @@ def registration():
         return jsonify({"status": 500, "error": "Use the POST method", "success": False})
 
 
-@app.route("/api/login", methods=['GET'])
+@app.route("/api/auth/login", methods=['POST'])
 def login():
     """
     login function
@@ -69,7 +69,7 @@ def login():
     Returns:
         json: answer from server
     """
-    if request.method == 'GET':
+    if request.method == 'POST':
         data = request.json()
         db_sess = db_session.create_session()
         if "username" in data:
@@ -115,7 +115,7 @@ def login():
                       "error": "Give the phone number or username in data",
                       "success": False}
     else:
-        answer = {"status": 500, 'error': 'Use GET method', "success": False}
+        answer = {"status": 500, 'error': 'Use POST method', "success": False}
     db_sess.close()
 
     return jsonify(answer)
