@@ -19,7 +19,7 @@ def api():
     return jsonify({"status": 200, "data": "You are in api"})
 
 
-@app.route("/api/auth/regisration", methods=["POST"])
+@app.route("/api/auth/registration", methods=["POST"])
 def registration():
     """
     registration function
@@ -28,10 +28,10 @@ def registration():
         json: answer from server
     """
     if request.method == "POST":
-        data = request.json()
+        data = request.get_json()
         db_sess = db_session.create_session()
         other = db_sess.query(User).filter(
-            User.name == data['username']).first()
+            User.username == data['username']).first()
         curr_id = db_sess.query(User).all()[-1].id + 1
         if other:
             return jsonify({"status": 500, "error": "Use other login", "success": False})
@@ -70,7 +70,7 @@ def login():
         json: answer from server
     """
     if request.method == 'POST':
-        data = request.json()
+        data = request.get_json()
         db_sess = db_session.create_session()
         if "username" in data:
             user = db_sess.query(User).filter(
