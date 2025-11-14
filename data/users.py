@@ -14,3 +14,6 @@ class User(SqlAlchemyBase):
     native_lang = Column(String(length=100), nullable=False)
     phone_number = Column(String(length=11), nullable=False)
     russian_level = Column(String(length=2), nullable=False)
+    registration_date = Column(String(length=60), nullable=False)
+
+# 1	ivanov	SecurePass123!	en	+79161234567	B1
