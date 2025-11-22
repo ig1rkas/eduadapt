@@ -4,6 +4,7 @@ import requests
 from config import TEXTOMETR_URL, METRICS
 
 
+
 def getTextometrAnalysis(text: str) -> dict:
     jsonData = json.dumps({"text": text})
     response = requests.request("POST", TEXTOMETR_URL, data=jsonData)
