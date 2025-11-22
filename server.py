@@ -6,7 +6,7 @@ from flask import Flask, jsonify, request
 from data import db_session
 from data.users import User
 
-from wordcloud import generate_word_cloud_api
+from wordcloud_generate import generate_word_cloud_api
 
 db_session.global_init("db/main.db")
 
@@ -34,7 +34,7 @@ def api():
               type: string
               example: "You are in api"
     """
-    return jsonify({"status": 200, "data": "You are in api"})
+    return jsonify({"data": "You are in api"}), 200
 
 
 @app.route("/api/auth/registration", methods=["POST"])
@@ -108,7 +108,7 @@ def registration():
         db_sess = db_session.create_session()
         other = db_sess.query(User).filter(User.username == data["username"]).first()
         if other:
-            return jsonify({"status": 500, "error": "Use other login", "success": False})
+            return jsonify({"error": "Use other login", "success": False}), 500
 
         user = User()
         user.username = data["username"]
@@ -125,7 +125,6 @@ def registration():
 
         return jsonify(
             {
-                "status": 200,
                 "error": None,
                 "success": True,
                 "data": {
@@ -137,10 +136,10 @@ def registration():
                     "registration_date": datetime.now(),
                 },
             }
-        )
+        ), 200
 
     else:
-        return jsonify({"status": 500, "error": "Use the POST method", "success": False})
+        return jsonify({"error": "Use the POST method", "success": False}), 500
 
 
 @app.route("/api/auth/login", methods=["POST"])
@@ -221,8 +220,8 @@ def login():
                 users = db_sess.query(User).filter(User.phone_number == data["login"]).all()
             if user:
                 if user.password == data["password"]:
-                    answer = {
-                        "status": 200,
+                    db_sess.close()
+                    return jsonify({
                         "data": {
                             "id": user.id,
                             "username": user.username,
@@ -233,14 +232,16 @@ def login():
                         },
                         "success": True,
                         "error": None,
-                    }
+                    }), 200
                 else:
-                    answer = {"status": 500, "error": "wrong password", "success": False}
+                    db_sess.close()
+                    return jsonify({"error": "wrong password", "success": False}), 500
             elif users:
                 for user in users:
                     if user.password == data["password"]:
-                        answer = {
-                            "status": 200,
+                        db_sess.close()
+                        return jsonify({
+
                             "data": {
                                 "id": user.id,
                                 "username": user.username,
@@ -251,17 +252,18 @@ def login():
                             },
                             "success": True,
                             "error": None,
-                        }
-                        break
+                        }), 200
             else:
-                answer = {"status": 500, "error": "Wrong login", "success": False}
+                db_sess.close()
+                return jsonify({"error": "Wrong login", "success": False}), 500
         else:
-            answer = {"status": 500, "error": "Give the login param in data", "success": False}
+            db_sess.close()
+            return jsonify({"error": "Give the login param in data", "success": False}), 500
     else:
-        answer = {"status": 500, "error": "Use POST method", "success": False}
-    db_sess.close()
+        db_sess.close()
+        return jsonify({"error": "Use POST method", "success": False}), 500
+    
 
-    return jsonify(answer)
 
 
 @app.route("/api/editdata/<id>", methods=["PATCH"])
@@ -337,12 +339,13 @@ def editData(id: int):
                 logs.append(value)
             except Exception:
                 pass
+        db_sess.close()
         if logs:
-            answer = {"status": 200, "data": {"changed_data": logs}}
+            return jsonify({"data": {"changed_data": logs}}), 200
         else:
-            answer = {"status": 500, "data": {"Nothing changed"}}
+            return jsonify({"data": {"Nothing changed"}}), 200
 
-        return jsonify(answer)
+ 
 
 
 
