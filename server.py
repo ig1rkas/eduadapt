@@ -1,3 +1,12 @@
+import smtplib
+
+from random import randint
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email_validator import validate_email
+
+from config import EMAIL_FROM, EMAIL_PASSWORT, SMPT_PORT, SMPT_SERVER
+
 from datetime import datetime
 
 from flasgger import Swagger
@@ -113,7 +122,7 @@ def registration():
         user = User()
         user.username = data["username"]
         user.password = data["password"]
-        user.phone_number = data["phone_number"]
+        user.email = data["email"]
         user.native_lang = data["native_lang"]
         user.russian_level = data["russian_level"]
         user.registration_date = datetime.now()
@@ -131,7 +140,7 @@ def registration():
                     "id": user.id,
                     "username": user.username,
                     "native_language": user.native_lang,
-                    "phone_number": user.phone_number,
+                    "email": user.email,
                     "russian_level": user.russian_level,
                     "registration_date": datetime.now(),
                 },
@@ -217,7 +226,7 @@ def login():
         if "login" in data:
             user = db_sess.query(User).filter(User.username == data["login"]).first()
             if not user:
-                users = db_sess.query(User).filter(User.phone_number == data["login"]).all()
+                users = db_sess.query(User).filter(User.email == data["login"]).all()
             if user:
                 if user.password == data["password"]:
                     db_sess.close()
@@ -226,7 +235,7 @@ def login():
                             "id": user.id,
                             "username": user.username,
                             "native_language": user.native_lang,
-                            "phone_number": user.phone_number,
+                            "email": user.email,
                             "russian_level": user.russian_level,
                             "registration_date": user.registration_date,
                         },
@@ -246,7 +255,7 @@ def login():
                                 "id": user.id,
                                 "username": user.username,
                                 "native_language": user.native_lang,
-                                "phone_number": user.phone_number,
+                                "email": user.email,
                                 "russian_level": user.russian_level,
                                 "registration_date": user.registration_date,
                             },
@@ -378,6 +387,51 @@ def word_cloud_endpoint():
             "data": None,
             "error": f"Внутренняя ошибка сервера: {str(e)}"
         }), 500
+        
+
+@app.route('/api/sendmail', methods=["POST"])
+def send_secret_key() -> None:
+  """methods
+  {
+    usermail: string,
+  }
+
+  reterns: secret key
+  
+  """
+  data = request.get_json()
+  
+  key = randint(100000, 999999)
+
+  subject = f'Ваш код подтверждения в EduAdapt: {key}'
+  body = f"""
+  Здравствуйте, ваш секретный код в EduAdapt:
+  {key}
+  """
+
+  msg = MIMEMultipart()
+  msg['From'] = EMAIL_FROM
+  msg['To'] = data['usermail']
+  msg['Subject'] = subject
+  msg.attach(MIMEText(body, 'plain'))
+
+  try:
+      server = smtplib.SMTP(SMPT_SERVER, SMPT_PORT)
+      server.starttls()  
+      server.login(EMAIL_FROM, EMAIL_PASSWORT)  
+      server.send_message(msg)  
+      return jsonify({
+        'success': True,
+        "data": {"key": key},
+        
+      }), 200
+  except Exception as e:
+      return jsonify({
+        'success': False,
+        "error": f"Произошла ошибка: {e}",
+      })
+  finally:
+      server.quit()  # close connection
 
 
 if __name__ == "__main__":

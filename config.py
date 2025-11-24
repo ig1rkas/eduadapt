@@ -14,3 +14,8 @@ METRICS = [
     "rki_children_5000",
 ]
 TEXTOMETR_URL = "https://api.textometr.ru/analyze"
+
+SMPT_SERVER = 'smtp.mail.ru'
+SMPT_PORT = 587
+EMAIL_FROM = 'phislab@mail.ru'
+EMAIL_PASSWORT = 'HVCyNvXts94YfrWz6Kes'
