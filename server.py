@@ -3,14 +3,14 @@ import smtplib
 from random import randint
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from email_validator import validate_email
+# from email_validator import validate_email
 
 from config import EMAIL_FROM, EMAIL_PASSWORT, SMPT_PORT, SMPT_SERVER
 
 from datetime import datetime
 
 from flasgger import Swagger
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, json
 
 from data import db_session
 from data.users import User
@@ -125,7 +125,7 @@ def registration():
         user.username = data["username"]
         user.password = data["password"]
         user.email = data["email"]
-        user.native_lang = data["native_lang"]
+        user.native_lang = data["native_language"]
         user.russian_level = data["russian_level"]
         user.registration_date = datetime.now()
         db_sess.add(user)
@@ -549,7 +549,8 @@ def get_summarising_test():
     try:
         response = deepseekApi(prompt)
         if response["status"] == 200:
-            return jsonify(response["data"]), 200
+            json_data = json.loads(response["data"])
+            return jsonify(json_data), 200
         else:
             return jsonify({
                 "success": False,
