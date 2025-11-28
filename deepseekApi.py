@@ -20,7 +20,7 @@ def deepseekApi(user_prompt: str, system_prompt="You are helpful assistant") -> 
         "model": "deepseek-chat",
         "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
         "temperature": 0.7,
-        "max_tokens": 2048,
+        # "max_tokens": 2048,
     }
     response = requests.post(DEEPSEEK_API_URL, json=data, headers=headers)
 
