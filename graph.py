@@ -13,6 +13,9 @@ def get_range_end(metric_name: str, table) -> int:
 def display_graph(table: dict) -> None:
     """
     Makes a bar graph that represents three metrics: level number, words and sentences amount
+
+    Example of usage:
+    >> display_graph(tb_maker.get_comparison_table("b2", False))
     """
     texts = [f"text {i}" for i in range(1, 11)]
 
@@ -45,5 +48,3 @@ b2_table = tb_maker.get_comparison_table("b1")
 b2_table_wo = tb_maker.get_comparison_table("b1", False)
 c1_table = tb_maker.get_comparison_table("b1",)
 c2_table_wo = tb_maker.get_comparison_table("b1", False)
-
-display_graph(b1_table_wo)
