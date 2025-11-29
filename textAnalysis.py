@@ -4,6 +4,7 @@ import requests
 from config import TEXTOMETR_URL, METRICS
 
 
+
 def getTextometrAnalysis(text: str) -> dict:
     """Sends text and gets response from textometr"""
 
@@ -50,3 +51,21 @@ def textAnalysis(text_with_terms: str, text_without_terms: str, level: str) -> N
     textsData[inLevelName] = resultWithTerms[inLevelName]
     textsData[not_inLevelName] = resultWithTerms[not_inLevelName]
     return toJson(textsData, level)
+
+
+def toJson(data: dict, level: str):
+    returnedDict = {
+        "success": data["text_ok"],
+        "data": {
+            "text_with_terms": {
+                "metrics": {metric: data[metric] for metric in METRICS[2:]},
+                "in_level": str(data["in" + level]) + " %",
+                "not_in_level": data["not_in" + level],
+            },
+            "text_without_terms": {
+                "level_metrics": {"level_number": data["level_number"], "level_comment": data["level_comment"]}
+            },
+            "error": data["text_error_message"],
+        },
+    }
+    return json.dumps(returnedDict)

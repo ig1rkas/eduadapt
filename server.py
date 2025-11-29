@@ -48,6 +48,78 @@ def api():
     return jsonify({"data": "You are in api"}), 200
 
 
+@app.route("/api/adapt-text", methods=["POST"])
+def adapt_text():
+    """
+    Text adaptation endpoint
+    ---
+    tags:
+      - Text Processing
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          required:
+            - text
+          properties:
+            text:
+              type: string
+              description: Original text to adapt
+              example: "Сложный научный текст для адаптации..."
+            target_level:
+              type: string
+              description: Target complexity level (A1, A2, B1, B2, C1, C2)
+              example: "B2"
+            max_attempts:
+              type: integer
+              description: Maximum adaptation attempts
+              example: 3
+    responses:
+      200:
+        description: Text adapted successfully
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+            data:
+              type: object
+            text_with_terms:
+              type: object
+            text_without_terms:
+              type: object
+            error:
+              type: string
+              nullable: true
+      400:
+        description: Bad request
+    """
+    data = request.get_json()
+
+    if not data or 'text' not in data:
+        return jsonify({
+            "success": False,
+            "data": None,
+            "error": "Text is required"
+        }), 400
+
+    original_text = data['text']
+    target_level = data.get('target_level', 'B2')
+    max_attempts = data.get('max_attempts', 3)
+
+    try:
+        result = adapt_educational_text(original_text, target_level)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "data": None,
+            "error": f"Adaptation failed: {str(e)}"
+        }), 500
+
+
 @app.route("/api/auth/registration", methods=["POST"])
 def registration():
     """
