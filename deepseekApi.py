@@ -1,5 +1,4 @@
 import requests
-import json
 
 from config import DEEPSEEK_API_KEY, DEEPSEEK_API_URL
 
@@ -23,7 +22,7 @@ def deepseekApi(user_prompt: str, system_prompt="You are helpful assistant") -> 
         "model": "deepseek-chat",
         "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
         "temperature": 0.7,
-        "max_tokens": 2048,
+        # "max_tokens": 2048,
     }
     response = requests.post(DEEPSEEK_API_URL, json=data, headers=headers)
 
@@ -255,3 +254,4 @@ def adapt_educational_text(original_text: str, target_level: str = "B2"):
             },
             "error": f"Не удалось достичь целевого уровня {target_level} после {max_attempts} попыток"
         }
+        return {"status": response.status_code, "reason": response.text}

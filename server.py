@@ -1,14 +1,23 @@
+import smtplib
+
+from random import randint
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+# from email_validator import validate_email
+
+from config import EMAIL_FROM, EMAIL_PASSWORT, SMPT_PORT, SMPT_SERVER
+
 from datetime import datetime
 
 from flasgger import Swagger
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, json
 
 from data import db_session
 from data.users import User
 
 from wordcloud_generate import generate_word_cloud_api
 
-from deepseekApi import adapt_educational_text
+from deepseekApi import deepseekApi
 
 db_session.global_init("db/main.db")
 
@@ -187,8 +196,8 @@ def registration():
         user = User()
         user.username = data["username"]
         user.password = data["password"]
-        user.phone_number = data["phone_number"]
-        user.native_lang = data["native_lang"]
+        user.email = data["email"]
+        user.native_lang = data["native_language"]
         user.russian_level = data["russian_level"]
         user.registration_date = datetime.now()
         db_sess.add(user)
@@ -205,7 +214,7 @@ def registration():
                     "id": user.id,
                     "username": user.username,
                     "native_language": user.native_lang,
-                    "phone_number": user.phone_number,
+                    "email": user.email,
                     "russian_level": user.russian_level,
                     "registration_date": datetime.now(),
                 },
@@ -291,7 +300,7 @@ def login():
         if "login" in data:
             user = db_sess.query(User).filter(User.username == data["login"]).first()
             if not user:
-                users = db_sess.query(User).filter(User.phone_number == data["login"]).all()
+                users = db_sess.query(User).filter(User.email == data["login"]).all()
             if user:
                 if user.password == data["password"]:
                     db_sess.close()
@@ -300,7 +309,7 @@ def login():
                             "id": user.id,
                             "username": user.username,
                             "native_language": user.native_lang,
-                            "phone_number": user.phone_number,
+                            "email": user.email,
                             "russian_level": user.russian_level,
                             "registration_date": user.registration_date,
                         },
@@ -320,7 +329,7 @@ def login():
                                 "id": user.id,
                                 "username": user.username,
                                 "native_language": user.native_lang,
-                                "phone_number": user.phone_number,
+                                "email": user.email,
                                 "russian_level": user.russian_level,
                                 "registration_date": user.registration_date,
                             },
@@ -446,6 +455,180 @@ def word_cloud_endpoint():
 
         return jsonify(result)
 
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "data": None,
+            "error": f"Внутренняя ошибка сервера: {str(e)}"
+        }), 500
+        
+
+@app.route('/api/sendmail', methods=["POST"])
+def send_secret_key() -> None:
+      """methods
+      {
+        usermail: string,
+      }
+
+      reterns: secret key
+
+      """
+      data = request.get_json()
+
+      key = randint(100000, 999999)
+
+      subject = f'Ваш код подтверждения в EduAdapt: {key}'
+      body = f"""
+      Здравствуйте, ваш секретный код в EduAdapt:
+      {key}
+      """
+
+      msg = MIMEMultipart()
+      msg['From'] = EMAIL_FROM
+      msg['To'] = data['usermail']
+      msg['Subject'] = subject
+      msg.attach(MIMEText(body, 'plain'))
+
+      try:
+          server = smtplib.SMTP(SMPT_SERVER, SMPT_PORT)
+          server.starttls()
+          server.login(EMAIL_FROM, EMAIL_PASSWORT)
+          server.send_message(msg)
+          return jsonify({
+            'success': True,
+            "data": {"key": key},
+
+          }), 200
+      except Exception as e:
+          return jsonify({
+            'success': False,
+            "error": f"Произошла ошибка: {e}",
+          })
+      finally:
+          server.quit()  # close connection
+
+
+@app.route("/api/generate-test", methods=["POST"])
+def get_summarising_test():
+    """
+    Generates a test based on source text
+    ---
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          properties:
+            text:
+              type: string
+    responses:
+      200:
+        description: Text generated successfully
+        schema:
+          type: object
+          properties:
+            success:
+              type: bool
+              example: true
+            data:
+              type: object
+              properties:
+                questions:
+                  type: list
+                  properties:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      question:
+                        type: string
+                      type:
+                        type: string
+                        default: one_choice
+                      options:
+                        type: list
+                        properties:
+                          type: string
+                      correct_answer:
+                        type: string
+                      explanation:
+                        type: string
+                test_config:
+                  type: object
+                  properties:
+                    total_questions:
+                      type: integer
+            error:
+              type: string
+              default: null
+      500:
+        schema:
+          type: object
+          properties:
+            success:
+              type: bool
+              default: false
+            data:
+              type: null
+            error:
+              type: string
+              example: error occurred
+    """
+    data = request.get_json()
+
+    if not data or not data["text"]:
+        return jsonify({
+            "success": False,
+            "data": None,
+            "error": "Текст обязателен для генерации теста"
+        }), 500
+
+    source_text = data["text"]
+    prompt = f"""
+ЗАДАЧА:
+Составь на основе приведенного ниже текста тест из нескольких вопросов, чтобы проверить, как читатель понял его содержание. Для каждого вопроса сделай несколько вариантов ответа, из которых верным будет только один. Количество вопросов и вариантов ответов определи сам, исходя из длины текста и количества важной информации в нем. При генерации ответа не используй разметку, отправь чистый текст, как указано в шаблоне ниже.
+
+ИСХОДНЫЙ ТЕКСТ: 
+{source_text}
+
+ФОРМАТ ОТВЕТА (JSON):
+{{
+"success": true,
+"data": {{
+    "questions": [
+      {{
+        "id": <порядковый номер вопроса, начиная с 1>,
+        "question": "<вопрос>",
+        "type": "one_choice",
+        "options": [
+          "<вариант 1>",
+          "<вариант 2>", 
+          …
+        ],
+        "correct_answer": <номер правильного ответа>,
+        "explanation": "<цитата из текста, по которой можно определить, что данный ответ является правильным>"
+      }}
+    ],
+    "test_config": {{
+      "total_questions": <количество вопросов>
+    }}
+  }},
+"error": null
+}}
+    """
+
+    try:
+        response = deepseekApi(prompt)
+        if response["status"] == 200:
+            json_data = json.loads(response["data"])
+            return jsonify(json_data), 200
+        else:
+            return jsonify({
+                "success": False,
+                "data": None,
+                "error": response["reason"]
+            }), response["status"]
     except Exception as e:
         return jsonify({
             "success": False,
