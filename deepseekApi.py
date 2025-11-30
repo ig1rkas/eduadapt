@@ -179,25 +179,27 @@ def adapt_educational_text(original_text: str, target_level: str = "B2"):
                             "key_sentences": adapted_data.get('key_sentences', []),
                             "professional_terms": adapted_data.get('professional_terms', [])
                         },
-                        "text_with_terms": {
-                            "level_metrics": {
-                                "level_number": analysis_with_terms.get('level_number', 0),
-                                "level_comment": analysis_with_terms.get('level_comment', '')
+                        "statistics": {
+                            "text_with_terms": {
+                                "level_metrics": {
+                                    "level_number": analysis_with_terms.get('level_number', 0),
+                                    "level_comment": analysis_with_terms.get('level_comment', '')
+                                },
+                                "keywords": analysis_with_terms.get('keywords', []),
+                                "basic_metrics": {
+                                    "word_count": analysis_with_terms.get('word_count', 0),
+                                    "sentence_count": analysis_with_terms.get('sentence_count', 0),
+                                    "reading_for_detail_speed": analysis_with_terms.get('reading_for_detail_speed', ''),
+                                    "skim_reading_speed": analysis_with_terms.get('skim_reading_speed', '')
+                                },
+                                "in_level": f"{analysis_with_terms.get(in_level_key, 0)}%",
+                                "not_in_level": analysis_with_terms.get(f'not_in{target_level}', [])
                             },
-                            "keywords": analysis_with_terms.get('keywords', []),
-                            "basic_metrics": {
-                                "word_count": analysis_with_terms.get('word_count', 0),
-                                "sentence_count": analysis_with_terms.get('sentence_count', 0),
-                                "reading_for_detail_speed": analysis_with_terms.get('reading_for_detail_speed', ''),
-                                "skim_reading_speed": analysis_with_terms.get('skim_reading_speed', '')
-                            },
-                            "in_level": f"{analysis_with_terms.get(in_level_key, 0)}%",
-                            "not_in_level": analysis_with_terms.get(f'not_in{target_level}', [])
-                        },
-                        "text_without_terms": {
-                            "level_metrics": {
-                                "level_number": analysis_without_terms.get('level_number', 0),
-                                "level_comment": analysis_without_terms.get('level_comment', '')
+                            "text_without_terms": {
+                                "level_metrics": {
+                                    "level_number": analysis_without_terms.get('level_number', 0),
+                                    "level_comment": analysis_without_terms.get('level_comment', '')
+                                }
                             }
                         }
                     },

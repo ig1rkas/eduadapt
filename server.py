@@ -96,18 +96,30 @@ def adapt_text():
       400:
         description: Bad request
     """
-    data = request.get_json()
 
-    if not data or 'text' not in data:
+    if 'multipart/form-data' not in request.content_type:
         return jsonify({
             "success": False,
             "data": None,
-            "error": "Text is required"
-        }), 400
+            "error": "Content-Type must be multipart/form-data"
+        }), 415  # 415 UNSUPPORTED MEDIA TYPE
 
-    original_text = data['text']
-    target_level = data.get('target_level', 'B2')
-    max_attempts = data.get('max_attempts', 3)
+    target_level = request.form.get('adaptation_level', 'B2')
+    original_text = request.form.get('text_input')
+    file_part = request.files.get('textFile')
+
+    # data = request.get_json()
+    #
+    # if not data or 'text' not in data:
+    #     return jsonify({
+    #         "success": False,
+    #         "data": None,
+    #         "error": "Text is required"
+    #     }), 400
+    #
+    # original_text = data['text_input']
+    # target_level = data.get('adaptation_level', 'B2')
+    # max_attempts = data.get('max_attempts', 3)
 
     try:
         result = adapt_educational_text(original_text, target_level)
