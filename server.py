@@ -55,27 +55,33 @@ def adapt_text():
     ---
     tags:
       - Text Processing
+    summary: Adapt text complexity using either direct input or an uploaded file.
+    description: This endpoint accepts text content either as a plain form field or as an uploaded file.
+
     parameters:
-      - in: body
-        name: body
-        required: true
-        schema:
-          type: object
-          required:
-            - text
-          properties:
-            text:
-              type: string
-              description: Original text to adapt
-              example: "Сложный научный текст для адаптации..."
-            target_level:
-              type: string
-              description: Target complexity level (A1, A2, B1, B2, C1, C2)
-              example: "B2"
-            max_attempts:
-              type: integer
-              description: Maximum adaptation attempts
-              example: 3
+      # 1. 普通表单字段
+      - name: adaptation_level
+        in: formData # 表明它是表单数据
+        type: string
+        description: Target complexity level (e.g., A1, A2, B1, B2, C1, C2).
+        required: false
+        default: "B2"
+
+      - name: text_input
+        in: formData # 表明它是表单数据
+        type: string
+        description: Optional raw text input.
+        required: false
+        example: "Сложный научный текст..."
+
+      - name: textFile
+        in: formData # 在 OAI 2.0 中，文件也放在 formData
+        type: file   # type 必须是 file
+        description: Optional text file to upload.
+        required: false
+
+    consumes:
+      - multipart/form-data
     responses:
       200:
         description: Text adapted successfully
