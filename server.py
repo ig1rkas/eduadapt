@@ -56,7 +56,7 @@ def adapt_text():
     tags:
       - Text Processing
     parameters:
-      - in: body..
+      - in: body
         name: body
         required: true
         schema:
