@@ -936,7 +936,7 @@ def get_summarising_test():
               type: null
             error:
               type: string
-              example: error occurred
+              example: Внутренняя ошибка сервера: <error_message>
     """
     data = request.get_json()
 
@@ -990,7 +990,7 @@ def get_summarising_test():
             return jsonify({
                 "success": False,
                 "data": None,
-                "error": response["reason"]
+                "error": "Внутренняя ошибка сервера " + response["reason"]
             }), response["status"]
     except Exception as e:
         return jsonify({
