@@ -136,7 +136,7 @@ def registration():
           required:
             - username
             - password
-            - phone_number
+            - email
             - native_lang
             - russian_level
           properties:
@@ -146,10 +146,10 @@ def registration():
             password:
               type: string
               example: "SecurePass123!"
-            phone_number:
+            email:
               type: string
-              example: "+79161234567"
-            native_lang:
+              example: "example@mail.ru"
+            native_language:
               type: string
               example: "en"
             russian_level:
@@ -244,7 +244,7 @@ def login():
            properties:
              login:
                type: string
-               description: Username or phone number
+               description: Username or email
                example: "john_doe"
              password:
                type: string
@@ -273,7 +273,7 @@ def login():
                    type: string
                  native_language:
                    type: string
-                 phone_number:
+                 email:
                    type: string
                  russian_level:
                    type: string
@@ -936,7 +936,7 @@ def get_summarising_test():
               type: null
             error:
               type: string
-              example: Внутренняя ошибка сервера: <error_message>
+              example: "Внутренняя ошибка сервера: <error_message>"
     """
     data = request.get_json()
 
