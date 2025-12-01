@@ -14,4 +14,5 @@ class User(SqlAlchemyBase):
     native_lang = Column(String(length=100), nullable=False)
     email = Column(String(length=40), nullable=False)
     russian_level = Column(String(length=2), nullable=False)
+    status = Column(String(length=15), nullable=False)
     registration_date = Column(String(length=60), nullable=False)
