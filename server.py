@@ -718,10 +718,6 @@ def editData(id: int):
         else:
             return jsonify({"data": {"Nothing changed"}}), 200
 
- 
-
-
-
 
 @app.route('/api/word-cloud', methods=['POST'])
 def word_cloud_endpoint():
@@ -887,6 +883,153 @@ def send_secret_key() -> None:
         })
     finally:
         server.quit()  # close connection
+        
+
+@app.route('/api/auth/sendmail', methods=["POST"])
+def send_secret_key():
+  """methods
+  {
+    user_id: int,
+    email: string,
+  }
+
+  reterns: secret key
+  
+  """
+  global auth_keys
+  
+  data = request.get_json()
+  
+  key = randint(100000, 999999)
+
+  subject = f'Ваш код подтверждения в EduAdapt: {key}'
+  body = f"""
+  Здравствуйте, ваш секретный код в EduAdapt:
+  {key}
+  """
+
+  msg = MIMEMultipart()
+  msg['From'] = EMAIL_FROM
+  msg['To'] = data['email']
+  msg['Subject'] = subject
+  msg.attach(MIMEText(body, 'plain'))
+
+  try:
+      server = smtplib.SMTP(SMPT_SERVER, SMPT_PORT)
+      server.starttls()  
+      server.login(EMAIL_FROM, EMAIL_PASSWORT)  
+      server.send_message(msg) 
+      auth_keys[data['user_id']] = key
+      return jsonify({
+        'success': True,
+        "data": {"key": key},
+        
+      }), 200
+  except Exception as e:
+      return jsonify({
+        'success': False,
+        "error": f"Произошла ошибка: {e}",
+      }), 500
+  finally:
+      server.quit() 
+      
+@app.route("/api/auth/verify-mail", methods=["POST"])
+def verify_mail():
+  data = request.get_json()
+  if auth_keys[data['user_id']] == data['verification_code']:
+    db_sess = db_session.create_session()
+    user = db_sess.query(User).filter(User.id == data["user_id"]).first()
+    user.status = "active"
+    db_sess.commit()
+    db_sess.close()
+    del auth_keys[data['user_id']]
+    return jsonify({
+
+        "data": {
+            "id": user.id,
+            "username": user.username,
+            "native_language": user.native_lang,
+            "email": user.email,
+            "russian_level": user.russian_level,
+            "status": user.status,
+            "registration_date": user.registration_date,
+            "verify_date": datetime.now()
+        },
+        "success": True,
+        "error": None,
+    }), 200
+    
+  return jsonify({
+    "success": False,
+    "error": 'uncorrect key',
+  }), 500
+  
+@app.route("/api/auth/recover-password", methods=["POST"])
+def recover_password():
+  global auth_keys
+  data = request.get_json()
+  if "verification_code" not in data:
+    if "email" in data and "user_id" in data:
+      key = randint(100000, 999999)
+      subject = f'Ваш код подтверждения в EduAdapt: {key}'
+      body = f"""
+      Здравствуйте, ваш секретный код в EduAdapt:
+      {key}
+      """
+
+      msg = MIMEMultipart()
+      msg['From'] = EMAIL_FROM
+      msg['To'] = data['email']
+      msg['Subject'] = subject
+      msg.attach(MIMEText(body, 'plain'))
+
+      try:
+          server = smtplib.SMTP(SMPT_SERVER, SMPT_PORT)
+          server.starttls()  
+          server.login(EMAIL_FROM, EMAIL_PASSWORT)  
+          server.send_message(msg) 
+          auth_keys[data['user_id']] = key
+          return jsonify({
+            "success": True,
+            "data": {
+              "message": "Password reset code has been sent to your email",
+              "email": data['email'],
+              "expires_in": 600
+            },
+            "error": None
+          }), 200
+      except Exception as e:
+          return jsonify({
+            'success': False,
+            "error": f"Произошла ошибка: {e}",
+          }), 500
+      finally:
+          server.quit() 
+    else:
+      return jsonify({
+        "success": False,
+        "error": "You should give email or user_id in params"
+      }), 500
+  else:
+    if auth_keys[data['user_id']] == data['verification_code']:
+      db_sess = db_session.create_session()
+      user = db_sess.query(User).filter(User.id == data["user_id"]).first()
+      user.password = data['new_password']
+      db_sess.commit()
+      db_sess.close()
+      return jsonify({
+        "success": True,
+        "data": {
+          "message": "Password has been reset successfully",
+          "user_id": user.id
+        },
+        "error": None
+      })
+    else:
+      return jsonify({
+        "success": False,
+        "error": "Uncorrect verification code"
+      })
 
 
 @app.route("/api/generate-test", methods=["POST"])
