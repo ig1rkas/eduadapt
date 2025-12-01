@@ -5,15 +5,16 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 # from email_validator import validate_email
 
-from config import EMAIL_FROM, EMAIL_PASSWORT, SMPT_PORT, SMPT_SERVER
+from config import EMAIL_FROM, EMAIL_PASSWORT, SMPT_PORT, SMPT_SERVER, EXPIRY_MINUTES
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from flasgger import Swagger
 from flask import Flask, jsonify, request, json
 
 from data import db_session
 from data.users import User
+from data.verification_code import VerificationCode
 
 from wordcloud_generate import generate_word_cloud_api
 
@@ -23,7 +24,6 @@ db_session.global_init("db/main.db")
 
 app = Flask(__name__)
 swagger = Swagger(app)
-
 
 @app.route("/api")
 def api():
@@ -114,19 +114,6 @@ def adapt_text():
     original_text = request.form.get('text_input')
     file_part = request.files.get('textFile')
 
-    # data = request.get_json()
-    #
-    # if not data or 'text' not in data:
-    #     return jsonify({
-    #         "success": False,
-    #         "data": None,
-    #         "error": "Text is required"
-    #     }), 400
-    #
-    # original_text = data['text_input']
-    # target_level = data.get('adaptation_level', 'B2')
-    # max_attempts = data.get('max_attempts', 3)
-
     try:
         result = adapt_educational_text(original_text, target_level)
         return jsonify(result)
@@ -136,7 +123,6 @@ def adapt_text():
             "data": None,
             "error": f"Adaptation failed: {str(e)}"
         }), 500
-
 
 @app.route("/api/auth/registration", methods=["POST"])
 def registration():
@@ -155,7 +141,7 @@ def registration():
             - username
             - password
             - email
-            - native_lang
+            - native_language
             - russian_level
           properties:
             username:
@@ -204,13 +190,33 @@ def registration():
               type: boolean
               example: false
     """
-    if request.method == "POST":
-        data = request.get_json()
-        db_sess = db_session.create_session()
-        other = db_sess.query(User).filter(User.username == data["username"]).first()
-        if other:
-            return jsonify({"error": "Use other login", "success": False}), 500
 
+    if request.method != "POST":
+        return jsonify({"error": "Use", "success": False}), 500
+
+    data = request.get_json()
+    required_fields = ["username", "password", "email", "native_language", "russian_level"]
+    if not all(field in data for field in required_fields):
+        return jsonify({"error": "Не хватает данных", "success": False}), 400
+
+    db_sess = None
+
+    try:
+        db_sess = db_session.create_session()
+
+        # 检查用户是否已存在
+        existing_user = db_sess.query(User).filter(
+            (User.username == data["username"]) | (User.email == data["email"])
+        ).first()
+
+        if existing_user:
+            db_sess.close()
+            return jsonify({
+                "error": "Логин или почта уже зарегистрирован",
+                "success": False
+            }), 409
+
+        # 创建新用户
         user = User()
         user.username = data["username"]
         user.password = data["password"]
@@ -218,30 +224,304 @@ def registration():
         user.native_lang = data["native_language"]
         user.russian_level = data["russian_level"]
         user.registration_date = datetime.now()
+        user.status = "unverified"
+
         db_sess.add(user)
         db_sess.commit()
+        db_sess.refresh(user)
 
-        user = db_sess.query(User).filter(User.username == data["username"]).first()
-        db_sess.close()
+        user_id = user.id
+        email = user.email
 
-        return jsonify(
-            {
-                "error": None,
+        key = str(randint(100000, 999999))
+
+        # если есть старый код подтверждения, то удалить его
+        old_codes = db_sess.query(VerificationCode).filter(
+            VerificationCode.user_id == user_id
+        ).all()
+
+        for old_code in old_codes:
+            db_sess.delete(old_code)
+
+        # создать новый код подтверждения
+        verification = VerificationCode(
+            user_id=user_id,
+            code=key,
+            expiry_minutes=2
+        )
+
+        db_sess.add(verification)
+        db_sess.commit()
+
+        # отправить код на почту
+        if not send_secret_key(email, key):
+            # если код не отправлен на почту, то нужно удалить пользователя и сохраненный код
+            cleanup_session = db_session.create_session()
+            try:
+                user_to_delete = cleanup_session.query(User).filter(User.id == user_id).first()
+                if user_to_delete:
+                    cleanup_session.delete(user_to_delete)
+
+                code_to_delete = cleanup_session.query(VerificationCode).filter(
+                    VerificationCode.user_id == user_id
+                ).first()
+                if code_to_delete:
+                    cleanup_session.delete(code_to_delete)
+
+                cleanup_session.commit()
+                return jsonify({
+                    "error": "Регистрация не прошла. Не удалось отправить код на почту.",
+                    "success": False
+                }), 500
+            finally:
+                cleanup_session.close()
+
+        response_data = {
+            "id": user.id,
+            "username": user.username,
+            "native_language": user.native_lang,
+            "email": user.email,
+            "russian_level": user.russian_level,
+            "status": user.status,
+            "registration_date": user.registration_date.isoformat() if user.registration_date else None,
+        }
+
+        return jsonify({
+            "error": None,
+            "success": True,
+            "data": response_data
+        }), 200
+
+    except Exception as e:
+        if db_sess:
+            db_sess.rollback()
+        return jsonify({
+            "error": f"Регистрация не прошла: {str(e)}",
+            "success": False
+        }), 500
+    finally:
+        if db_sess:
+            db_sess.close()
+
+
+@app.route("/api/auth/verify-mail", methods=["POST"])
+def verify_mail():
+    """
+        Verify user email with verification code
+        ---
+        tags:
+          - Authentication
+        summary: Verify user email with verification code
+        description: Verify user's email address using the verification code sent to their email. The verification code is valid for 2 minutes.
+        parameters:
+          - in: body
+            name: body
+            required: true
+            schema:
+              type: object
+              required:
+                - user_id
+                - verification_code
+              properties:
+                user_id:
+                  type: string
+                  description: ID of the user to verify
+                  example: "102"
+                verification_code:
+                  type: string
+                  description: Verification code sent to user's email
+                  example: "123456"
+        responses:
+          200:
+            description: Email successfully verified
+            schema:
+              type: object
+              properties:
+                success:
+                  type: boolean
+                  example: true
+                error:
+                  type: string
+                  example: null
+                data:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      description: User ID
+                      example: "123e4567-e89b-12d3-a456-426614174000"
+                    username:
+                      type: string
+                      example: "john_doe"
+                    native_language:
+                      type: string
+                      example: "en"
+                    email:
+                      type: string
+                      format: email
+                      example: "john@example.com"
+                    russian_level:
+                      type: string
+                      enum: [beginner, intermediate, advanced, fluent]
+                      example: "beginner"
+                    status:
+                      type: string
+                      example: "active"
+                    registration_date:
+                      type: string
+                      format: date-time
+                      example: "2024-01-15T10:30:00Z"
+                    verified_at:
+                      type: string
+                      format: date-time
+                      example: "2024-01-15T10:32:00Z"
+              400:
+                description: Missing required parameters
+                schema:
+                  type: object
+                  properties:
+                    success:
+                      type: boolean
+                      example: false
+                    error:
+                      type: string
+                      example: "Missing user_id or verification_code"
+              401:
+                description: Incorrect verification code
+                schema:
+                  type: object
+                  properties:
+                    success:
+                      type: boolean
+                      example: false
+                    error:
+                      type: string
+                      example: "Incorrect verification code"
+              404:
+                description: User not found or verification code not found
+                schema:
+                  type: object
+                  properties:
+                    success:
+                      type: boolean
+                      example: false
+                    error:
+                      type: string
+                      example: "No verification code found for this user_id or code has expired/already used"
+              410:
+                description: Verification code has expired
+                schema:
+                  type: object
+                  properties:
+                    success:
+                      type: boolean
+                      example: false
+                    error:
+                      type: string
+                      example: "Verification code has expired"
+              500:
+                description: Wrong HTTP method used
+                schema:
+                  type: object
+                  properties:
+                    success:
+                      type: boolean
+                      example: false
+                    error:
+                      type: string
+                      example: "Use the POST method"
+        """
+    if request.method != "POST":
+        return jsonify({"error": "Use POST Method", "success": False}), 405
+
+    data = request.get_json()
+    user_id = data.get('user_id')
+    verification_code = data.get('verification_code')
+
+    if not user_id or not verification_code:
+        return jsonify({
+            "success": False,
+            "error": "Отсутствует user_id или verification_code"
+        }), 400
+
+    db_sess = None
+
+    try:
+        db_sess = db_session.create_session()
+
+        user = db_sess.query(User).filter(User.id == user_id).first()
+        if not user:
+            return jsonify({
+                "success": False,
+                "error": "Пользователя отсутствует"
+            }), 404
+
+        if user.status == "active":
+            return jsonify({
                 "success": True,
-                "data": {
-                    "id": user.id,
-                    "username": user.username,
-                    "native_language": user.native_lang,
-                    "email": user.email,
-                    "russian_level": user.russian_level,
-                    "registration_date": datetime.now(),
-                },
-            }
-        ), 200
+                "error": None,
+                "message": "Данная почта уже была подтверждена"
+            }), 200
 
-    else:
-        return jsonify({"error": "Use the POST method", "success": False}), 500
+        # поиск кода подтверждения в бд
+        verification = db_sess.query(VerificationCode).filter(
+            VerificationCode.user_id == user_id
+        ).first()
 
+        if not verification:
+            return jsonify({
+                "success": False,
+                "error": "Код подтверждения отсутствует или уже не действует"
+            }), 404
+
+        if verification.is_expired():
+            db_sess.delete(verification)
+            db_sess.commit()
+            return jsonify({
+                "success": False,
+                "error": "Код подтверждения отсутствует уже не действует"
+            }), 410
+
+        if verification.code != str(verification_code):
+            return jsonify({
+                "success": False,
+                "error": "Код подтверждения неверный"
+            }), 401
+
+        # Верификация прошла, удалить данные в бд verification_codes
+        db_sess.delete(verification)
+        user.status = "active"
+        user.verified_at = datetime.now()
+        db_sess.commit()
+
+        response_data = {
+            "id": user.id,
+            "username": user.username,
+            "native_language": user.native_lang,
+            "email": user.email,
+            "russian_level": user.russian_level,
+            "status": user.status,
+            "registration_date": user.registration_date.isoformat() if user.registration_date else None,
+            "verified_at": user.verified_at.isoformat() if user.verified_at else None
+        }
+
+        return jsonify({
+            "data": response_data,
+            "success": True,
+            "error": None,
+            "message": "Верификация прошла успешно."
+        }), 200
+
+    except Exception as e:
+        if db_sess:
+            db_sess.rollback()
+        return jsonify({
+            "success": False,
+            "error": f"Верификация не прошла: {str(e)}"
+        }), 500
+    finally:
+        if db_sess:
+            db_sess.close()
 
 @app.route("/api/auth/login", methods=["POST"])
 def login():
@@ -311,60 +591,72 @@ def login():
                type: boolean
                example: false
     """
-    if request.method == "POST":
-        data = request.get_json()
-        print(data)
+    if request.method != "POST":
+        return jsonify({"error": "Use POST method", "success": False}), 405
+
+    data = request.get_json()
+
+    if not data or "login" not in data or "password" not in data:
+        return jsonify({"error": "Missing login or password", "success": False}), 400
+
+    db_sess = None
+
+    try:
         db_sess = db_session.create_session()
-        if "login" in data:
-            user = db_sess.query(User).filter(User.username == data["login"]).first()
-            if not user:
-                users = db_sess.query(User).filter(User.email == data["login"]).all()
-            if user:
-                if user.password == data["password"]:
-                    db_sess.close()
-                    return jsonify({
-                        "data": {
-                            "id": user.id,
-                            "username": user.username,
-                            "native_language": user.native_lang,
-                            "email": user.email,
-                            "russian_level": user.russian_level,
-                            "registration_date": user.registration_date,
-                        },
-                        "success": True,
-                        "error": None,
-                    }), 200
-                else:
-                    db_sess.close()
-                    return jsonify({"error": "wrong password", "success": False}), 500
-            elif users:
-                for user in users:
-                    if user.password == data["password"]:
-                        db_sess.close()
-                        return jsonify({
 
-                            "data": {
-                                "id": user.id,
-                                "username": user.username,
-                                "native_language": user.native_lang,
-                                "email": user.email,
-                                "russian_level": user.russian_level,
-                                "registration_date": user.registration_date,
-                            },
-                            "success": True,
-                            "error": None,
-                        }), 200
-            else:
-                db_sess.close()
-                return jsonify({"error": "Wrong login", "success": False}), 500
-        else:
+        login_input = data["login"]
+        password_input = data["password"]
+
+        user = db_sess.query(User).filter(User.username == login_input).first()
+
+        if not user:
+            user = db_sess.query(User).filter(User.email == login_input).first()
+
+        if not user:
+            return jsonify({
+                "error": "Wrong login or password",
+                "success": False
+            }), 401
+
+        if user.password != password_input:
+            return jsonify({
+                "error": "Wrong login or password",
+                "success": False
+            }), 401
+
+        if user.status != "active":
+            return jsonify({
+                "error": "Account not verified. Please verify your email first.",
+                "success": False
+            }), 403
+
+        response_data = {
+            "id": user.id,
+            "username": user.username,
+            "native_language": user.native_lang,
+            "email": user.email,
+            "russian_level": user.russian_level,
+            "status": user.status,
+            "registration_date": user.registration_date.isoformat() if user.registration_date else None,
+            "verified_at": user.verified_at.isoformat() if user.verified_at else None,
+        }
+
+        return jsonify({
+            "data": response_data,
+            "success": True,
+            "error": None,
+            "message": "Login successful"
+        }), 200
+
+    except Exception as e:
+        print(f"Login error: {e}")
+        return jsonify({
+            "error": f"Login failed: {str(e)}",
+            "success": False
+        }), 500
+    finally:
+        if db_sess:
             db_sess.close()
-            return jsonify({"error": "Give the login param in data", "success": False}), 500
-    else:
-        db_sess.close()
-        return jsonify({"error": "Use POST method", "success": False}), 500
-
-
 
 
 @app.route("/api/user/profile", methods=["POST"])
@@ -426,20 +718,28 @@ def profile():
       500: 
         description: Update failed
     """
-    if request.method == "POST":
-        data = request.get_json()
-        print(data)
+    if request.method != "POST":
+        return jsonify({"error": "Use POST method", "success": False}), 405
+
+    data = request.get_json()
+
+    if not data or "user_id" not in data:
+        return jsonify({"error": "Missing user_id", "success": False}), 400
+
+    db_sess = None
+
+    try:
         db_sess = db_session.create_session()
         user = db_sess.query(User).filter(User.id == data["user_id"]).first()
         if not user:
             db_sess.close()
-            return jsonify({"error": "user not found", "success": False}), 500
-        if "username" in data: 
+            return jsonify({"error": "user not found", "success": False}), 404
+        if "username" in data:
             existing_user = db_sess.query(User).filter(User.username == data["username"]).first()
             if existing_user:
                 db_sess.close()
-                return jsonify({"error": "username already exists", "success": False}), 500
-            user.username=data["username"] 
+                return jsonify({"error": "username already exists", "success": False}), 409
+            user.username=data["username"]
         if "native_language" in data:
             user.native_lang=data["native_language"]
         if "russian_level" in data:
@@ -448,22 +748,28 @@ def profile():
         db_sess.refresh(user)
         return jsonify({
 
-            "data": {
-                "id": user.id,
-                "username": user.username,
-                "native_language": user.native_lang,
-                "email": user.email,
-                "russian_level": user.russian_level,
-                "updated_at": datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ"),
-            },
-            "success": True,
-            "error": None,
-        }), 200
-    else:
-        db_sess.close()
-        return jsonify({"error": "use POST method", "success": False}), 500
-    
+        "data": {
+            "id": user.id,
+            "username": user.username,
+            "native_language": user.native_lang,
+            "email": user.email,
+            "russian_level": user.russian_level,
+            "updated_at": datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        },
+        "success": True,
+        "error": None,
+    }), 200
 
+    except Exception as e:
+        if db_sess:
+            db_sess.rollback()
+        return jsonify({
+            "error": f"Failed to update profile: {str(e)}",
+            "success": False
+        }), 500
+    finally:
+        if db_sess:
+            db_sess.close()
 
 @app.route("/api/user/change-password", methods=["POST"])
 def change_password(): 
@@ -519,26 +825,29 @@ def change_password():
       500: 
         description: Password change failed
     """
-    if request.method == "POST":
-        data = request.get_json()
-        if "user_id" not in data or "new_password" not in data or "current_password" not in data:
-            return jsonify({"error": "Missing required fields", "success": False}), 500
+    if request.method != "POST":
+        return jsonify({"error": "Use POST method", "success": False}), 405
+
+    data = request.get_json()
+    if "user_id" not in data or "new_password" not in data or "current_password" not in data:
+        return jsonify({"error": "Missing required fields", "success": False}), 400
+    db_sess = None
+    try:
         db_sess = db_session.create_session()
         user = db_sess.query(User).filter(User.id == data["user_id"]).first()
         if not user:
             db_sess.close()
-            return jsonify({"error": "user not found", "success": False}), 500
+            return jsonify({"error": "user not found", "success": False}), 404
         if user.password != data["current_password"]:
             db_sess.close()
-            return jsonify({"error": "invalid current password", "success": False}), 500
+            return jsonify({"error": "invalid current password", "success": False}), 400
         if data["current_password"]==data["new_password"]:
             db_sess.close()
-            return jsonify({"error": "new password must be different from current password", "success": False}), 500
+            return jsonify({"error": "new password must be different from current password", "success": False}), 400
         user.password=data["new_password"]
         db_sess.commit()
         db_sess.refresh(user)
         return jsonify({
-
             "data": {
                 "id": user.id,
                 "message": "password changed successfully",
@@ -547,11 +856,17 @@ def change_password():
             "success": True,
             "error": None,
         }), 200
-    else:
-        db_sess.close()
-        return jsonify({"error": "use POST method", "success": False}), 500
 
-
+    except Exception as e:
+        if db_sess:
+            db_sess.rollback()
+        return jsonify({
+            "error": f"Failed to change password: {str(e)}",
+            "success": False
+        }), 500
+    finally:
+        if db_sess:
+            db_sess.close()
 
 
 @app.route("/api/user/change-email", methods=["POST"])
@@ -603,120 +918,61 @@ def change_email():
       500: 
         description: Bad request
     """
-    if request.method == "POST":
-        data = request.get_json()
-        if "user_id" not in data or "new_email" not in data:
-            return jsonify({"error": "Missing required fields", "success": False}), 500
-        db_sess = db_session.create_session()
+    if request.method != "POST":
+        return jsonify({"error": "Use POST method", "success": False}), 405
+
+    data = request.get_json()
+
+    if "user_id" not in data or "new_email" not in data:
+        return jsonify({"error": "Missing required fields", "success": False}), 400
+
+    db_sess = db_session.create_session()
+    try:
         user = db_sess.query(User).filter(User.id == data["user_id"]).first()
+
         if not user:
             db_sess.close()
-            return jsonify({"error": "user not found", "success": False}), 500 
+            return jsonify({"error": "user not found", "success": False}), 404
+
         existing_user = db_sess.query(User).filter(User.email == data["new_email"]).first()
         if existing_user:
             db_sess.close()
-            return jsonify({"error": "email already exists", "success": False}), 500
+            return jsonify({"error": "email already exists", "success": False}), 400
         if user.email==data["new_email"]:
             db_sess.close()
-            return jsonify({"error": "new email must be different from current email", "success": False}), 500
+            return jsonify({"error": "new email must be different from current email", "success": False}), 400
+
         user.email=data["new_email"]
+
+        user.status = "unverified"
+        verification_key = str(randint(100000, 999999))
+
+        # удалить старый код подтверждения
+        db_sess.query(VerificationCode).filter(
+            VerificationCode.user_id == user.id
+        ).delete()
+
+        verification = VerificationCode(user_id=user.id, code=verification_key)
+        db_sess.add(verification)
         db_sess.commit()
         db_sess.refresh(user)
-        return jsonify({
 
+        send_secret_key(user.email, verification_key)
+
+        return jsonify({
             "data": {
                 "id": user.id,
-                "message": "email changed successfully",
-                "updated_at": datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "message": "Email updated. Please verify your new email.",
+                "updated_at": datetime.now().isoformat()
             },
             "success": True,
-            "error": None,
+            "error": None
         }), 200
-    else:
+
+    except Exception as e:
+        return jsonify({"error": str(e), "success": False}), 500
+    finally:
         db_sess.close()
-        return jsonify({"error": "use POST method", "success": False}), 500
-
-
-
-
-@app.route("/api/editdata/<id>", methods=["PATCH"])
-def editData(id: int):
-    """
-    Edit user data endpoint
-    ---
-    tags:
-      - User Management
-    parameters:
-      - in: path
-        name: id
-        type: integer
-        required: true
-        description: User ID
-        example: 1
-      - in: body
-        name: body
-        required: true
-        schema:
-          type: object
-          properties:
-            username:
-              type: string
-            password:
-              type: string
-            phone_number:
-              type: string
-            native_lang:
-              type: string
-            russian_level:
-              type: string
-    responses:
-      200:
-        description: Data updated successfully
-        schema:
-          type: object
-          properties:
-            status:
-              type: integer
-              example: 200
-            data:
-              type: object
-              properties:
-                changed_data:
-                  type: array
-                  items:
-                    type: string
-      500:
-        description: Update failed
-        schema:
-          type: object
-          properties:
-            status:
-              type: integer
-              example: 500
-            data:
-              type: object
-    """
-    if request.method == "PATCH":
-        db_sess = db_session.create_session()
-        data = request.json()
-        user = (
-            db_sess.query(User).filter(User.id == id).first()
-            if id
-            else db_sess.query(User).filter(User.username == data["name"])
-        )
-
-        logs = []
-        for value in data:
-            try:
-                exec(f"user.{value} = data['{value}']")
-                logs.append(value)
-            except Exception:
-                pass
-        db_sess.close()
-        if logs:
-            return jsonify({"data": {"changed_data": logs}}), 200
-        else:
-            return jsonify({"data": {"Nothing changed"}}), 200
 
 
 @app.route('/api/word-cloud', methods=['POST'])
@@ -806,63 +1062,22 @@ def word_cloud_endpoint():
             "data": None,
             "error": f"Внутренняя ошибка сервера: {str(e)}"
         }), 500
-        
 
-@app.route('/api/sendmail', methods=["POST"])
-def send_secret_key() -> None:
+def send_secret_key(email, key):
     """
-    Send verification code to email endpoint 
-    --- 
-    tags: 
-      - Email 
-    parameters: 
-      - in: body 
-        name: body 
-        required: true 
-        schema: 
-          type: object 
-          required: 
-            - usermail 
-          properties: 
-            usermail: 
-              type: string 
-              description: Email address to send verification code to 
-              example: "user@example.com" 
-    responses: 
-      200: 
-        description: Verification code sent successfully 
-        schema: 
-          type: object 
-          properties: 
-            success: 
-              type: boolean 
-              example: true 
-            data: 
-              type: object 
-              properties: 
-                key: 
-                  type: integer 
-                  description: 6-digit verification code 
-                  example: 123456 
-            error: 
-              type: string 
-              nullable: true 
-      500: 
-        description: Failed to send email
+    Отправляет 6-значный код подтверждения на указанный email.
+
+    Возвращает True в случае успеха, False в случае неудачи.
     """
-    data = request.get_json()
-
-    key = randint(100000, 999999)
-
     subject = f'Ваш код подтверждения в EduAdapt: {key}'
     body = f"""
-    Здравствуйте, ваш секретный код в EduAdapt:
-    {key}
-    """
+      Здравствуйте, ваш секретный код в EduAdapt:
+      {key}
+      """
 
     msg = MIMEMultipart()
     msg['From'] = EMAIL_FROM
-    msg['To'] = data['usermail']
+    msg['To'] = email
     msg['Subject'] = subject
     msg.attach(MIMEText(body, 'plain'))
 
@@ -871,98 +1086,10 @@ def send_secret_key() -> None:
         server.starttls()
         server.login(EMAIL_FROM, EMAIL_PASSWORT)
         server.send_message(msg)
-        return jsonify({
-          'success': True,
-          "data": {"key": key},
-
-        }), 200
+        server.quit()
+        return True
     except Exception as e:
-        return jsonify({
-          'success': False,
-          "error": f"Произошла ошибка: {e}",
-        })
-    finally:
-        server.quit()  # close connection
-        
-
-@app.route('/api/auth/sendmail', methods=["POST"])
-def send_secret_key():
-  """methods
-  {
-    user_id: int,
-    email: string,
-  }
-
-  reterns: secret key
-  
-  """
-  global auth_keys
-  
-  data = request.get_json()
-  
-  key = randint(100000, 999999)
-
-  subject = f'Ваш код подтверждения в EduAdapt: {key}'
-  body = f"""
-  Здравствуйте, ваш секретный код в EduAdapt:
-  {key}
-  """
-
-  msg = MIMEMultipart()
-  msg['From'] = EMAIL_FROM
-  msg['To'] = data['email']
-  msg['Subject'] = subject
-  msg.attach(MIMEText(body, 'plain'))
-
-  try:
-      server = smtplib.SMTP(SMPT_SERVER, SMPT_PORT)
-      server.starttls()  
-      server.login(EMAIL_FROM, EMAIL_PASSWORT)  
-      server.send_message(msg) 
-      auth_keys[data['user_id']] = key
-      return jsonify({
-        'success': True,
-        "data": {"key": key},
-        
-      }), 200
-  except Exception as e:
-      return jsonify({
-        'success': False,
-        "error": f"Произошла ошибка: {e}",
-      }), 500
-  finally:
-      server.quit() 
-      
-@app.route("/api/auth/verify-mail", methods=["POST"])
-def verify_mail():
-  data = request.get_json()
-  if auth_keys[data['user_id']] == data['verification_code']:
-    db_sess = db_session.create_session()
-    user = db_sess.query(User).filter(User.id == data["user_id"]).first()
-    user.status = "active"
-    db_sess.commit()
-    db_sess.close()
-    del auth_keys[data['user_id']]
-    return jsonify({
-
-        "data": {
-            "id": user.id,
-            "username": user.username,
-            "native_language": user.native_lang,
-            "email": user.email,
-            "russian_level": user.russian_level,
-            "status": user.status,
-            "registration_date": user.registration_date,
-            "verify_date": datetime.now()
-        },
-        "success": True,
-        "error": None,
-    }), 200
-    
-  return jsonify({
-    "success": False,
-    "error": 'uncorrect key',
-  }), 500
+        return False
   
 @app.route("/api/auth/recover-password", methods=["POST"])
 def recover_password():
@@ -1030,7 +1157,6 @@ def recover_password():
         "success": False,
         "error": "Uncorrect verification code"
       })
-
 
 @app.route("/api/generate-test", methods=["POST"])
 def get_summarising_test():
