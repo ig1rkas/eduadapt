@@ -129,7 +129,7 @@ def adapt_educational_text(original_text: str, target_level: str = "B2"):
             "original_text_without_terms": "исходный текст без терминов",
             "adapted_text": "адаптированный текст с терминами",
             "adapted_text_without_terms": "адаптированный текст без терминов",
-            "key_sentences": ["1-3 главных предложения на абзац адаптированного текста"]
+            "key_sentences": ["из адаптированного текста с терминами выделить ключевые предложения. НЕ ПЕРЕФОРМУЛИРУЙТЕ ИХ!"]
         },
         "original_text": original_text
     }
