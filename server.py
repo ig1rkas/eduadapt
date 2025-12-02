@@ -1212,6 +1212,18 @@ def get_summarising_test():
             error:
               type: string
               default: null
+      400:
+        schema:
+          type: object
+          properties:
+            success:
+              type: bool
+              default: false
+            data:
+              type: null
+            error:
+              type: string
+              example: "Текст обязателен для генерации теста"
       500:
         schema:
           type: object
@@ -1232,7 +1244,7 @@ def get_summarising_test():
             "success": False,
             "data": None,
             "error": "Текст обязателен для генерации теста"
-        }), 500
+        }), 400
 
     source_text = data["text"]
     prompt = f"""
