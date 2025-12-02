@@ -5,7 +5,7 @@ import requests
 
 from config import DEEPSEEK_API_KEY, DEEPSEEK_API_URL
 
-from textAnalysis import getTextometrAnalysis
+from textAnalysis import get_textometr_analysis
 
 
 def deepseekApi(user_prompt: str, system_prompt="You are helpful assistant") -> requests:
@@ -163,8 +163,8 @@ def adapt_educational_text(original_text: str, target_level: str = "B2"):
 
             last_adapted_data = adapted_data
 
-            analysis_with_terms = getTextometrAnalysis(adapted_data['adapted_text'])
-            analysis_without_terms = getTextometrAnalysis(adapted_data['adapted_text_without_terms'])
+            analysis_with_terms = get_textometr_analysis(adapted_data['adapted_text'])
+            analysis_without_terms = get_textometr_analysis(adapted_data['adapted_text_without_terms'])
 
             last_analysis_with_terms = analysis_with_terms
             last_analysis_without_terms = analysis_without_terms
@@ -185,10 +185,10 @@ def adapt_educational_text(original_text: str, target_level: str = "B2"):
                                     "level_number": analysis_with_terms.get('level_number', 0),
                                     "level_comment": analysis_with_terms.get('level_comment', '')
                                 },
-                                "keywords": analysis_with_terms.get('keywords', []),
+                                "keywords": analysis_with_terms.get('key_words', []),
                                 "basic_metrics": {
-                                    "word_count": analysis_with_terms.get('word_count', 0),
-                                    "sentence_count": analysis_with_terms.get('sentence_count', 0),
+                                    "word_count": analysis_with_terms.get('words', 0),
+                                    "sentence_count": analysis_with_terms.get('sentences', 0),
                                     "reading_for_detail_speed": analysis_with_terms.get('reading_for_detail_speed', ''),
                                     "skim_reading_speed": analysis_with_terms.get('skim_reading_speed', '')
                                 },
@@ -242,10 +242,10 @@ def adapt_educational_text(original_text: str, target_level: str = "B2"):
                     "level_number": last_analysis_with_terms.get('level_number', 0),
                     "level_comment": last_analysis_with_terms.get('level_comment', '')
                 },
-                "keywords": last_analysis_with_terms.get('keywords', []),
+                "keywords": last_analysis_with_terms.get('key_words', []),
                 "basic_metrics": {
-                    "word_count": last_analysis_with_terms.get('word_count', 0),
-                    "sentence_count": last_analysis_with_terms.get('sentence_count', 0),
+                    "word_count": last_analysis_with_terms.get('words', 0),
+                    "sentence_count": last_analysis_with_terms.get('sentences', 0),
                     "reading_for_detail_speed": last_analysis_with_terms.get('reading_for_detail_speed', ''),
                     "skim_reading_speed": last_analysis_with_terms.get('skim_reading_speed', '')
                 },
