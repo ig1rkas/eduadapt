@@ -18,7 +18,7 @@ from data.verification_code import VerificationCode
 
 from wordcloud_generate import generate_word_cloud_api
 
-from deepseekApi import deepseekApi, adapt_educational_text
+from deepseekApi import deepseek_api, adapt_educational_text
 
 db_session.global_init("db/main.db")
 
@@ -59,16 +59,15 @@ def adapt_text():
     description: This endpoint accepts text content either as a plain form field or as an uploaded file.
 
     parameters:
-      # 1. 普通表单字段
       - name: adaptation_level
-        in: formData # 表明它是表单数据
+        in: formData
         type: string
         description: Target complexity level (e.g., A1, A2, B1, B2, C1, C2).
         required: false
         default: "B2"
 
       - name: text_input
-        in: formData # 表明它是表单数据
+        in: formData
         type: string
         description: Optional raw text input.
         required: false
@@ -1281,7 +1280,7 @@ def get_summarising_test():
     """
 
     try:
-        response = deepseekApi(prompt)
+        response = deepseek_api(prompt)
         if response["status"] == 200:
             json_data = json.loads(response["data"])
             return jsonify(json_data), 200

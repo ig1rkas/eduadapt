@@ -8,7 +8,7 @@ from config import DEEPSEEK_API_KEY, DEEPSEEK_API_URL
 from textAnalysis import get_textometr_analysis
 
 
-def deepseekApi(user_prompt: str, system_prompt="You are helpful assistant") -> requests:
+def deepseek_api(user_prompt: str, system_prompt="You are helpful assistant") -> requests:
     """
     function to get a response from deepseek
 
@@ -69,7 +69,7 @@ def get_summarising_test(source_text: str):
   "error": null
 }}
 """
-    return json.loads(deepseekApi(prompt)["data"])
+    return json.loads(deepseek_api(prompt)["data"])
 
 
 def adapt_educational_text(original_text: str, target_level: str = "B2"):
@@ -79,7 +79,6 @@ def adapt_educational_text(original_text: str, target_level: str = "B2"):
     Args:
         original_text (str): Исходный текст для адаптации
         target_level (str): Целевой уровень сложности (B1, B2)
-        max_attempts (int): Максимальное количество попыток адаптации
 
     Returns:
         dict: Результат адаптации в формате JSON
@@ -129,135 +128,96 @@ def adapt_educational_text(original_text: str, target_level: str = "B2"):
             "original_text_without_terms": "исходный текст без терминов",
             "adapted_text": "адаптированный текст с терминами",
             "adapted_text_without_terms": "адаптированный текст без терминов",
-            "key_sentences": ["из адаптированного текста с терминами выделить ключевые предложения. НЕ ПЕРЕФОРМУЛИРУЙТЕ ИХ!"]
+            "key_sentences": [
+                "из каждого абзаца адаптированного текста с терминами выделить 1-2 ключевые предложения. НЕ ПЕРЕФОРМУЛИРУЙТЕ ИХ!"]
         },
         "original_text": original_text
     }
 
-    max_attempts = 5
-    last_adapted_data = None
-    last_analysis_with_terms = None
-    last_analysis_without_terms = None
+    in_level_key = f"in{target_level}"
+    prompt_text = json.dumps(base_prompt, ensure_ascii=False, indent=2)
+    response = deepseek_api(prompt_text, "You are an educational text adaptation expert")
 
-    for attempt in range(max_attempts):
-        prompt_text = json.dumps(base_prompt, ensure_ascii=False, indent=2)
-        response = deepseekApi(prompt_text, "You are an educational text adaptation expert")
-
-        if response['status'] != 200:
-            return {
-                "success": False,
-                "data": None,
-                "error": f"DeepSeek API error: {response.get('reason', 'Unknown error')}"
-            }
-
-        try:
-            response['data'] = re.sub(r'^```json\s*|\s*```$', '', response['data'], flags=re.MULTILINE)
-            adapted_data = json.loads(response['data'])
-
-            if 'adapted_text' not in adapted_data:
-                return {
-                    "success": False,
-                    "data": None,
-                    "error": "Invalid response format: missing adapted_text"
-                }
-
-            last_adapted_data = adapted_data
-
-            analysis_with_terms = get_textometr_analysis(adapted_data['adapted_text'])
-            analysis_without_terms = get_textometr_analysis(adapted_data['adapted_text_without_terms'])
-
-            last_analysis_with_terms = analysis_with_terms
-            last_analysis_without_terms = analysis_without_terms
-
-            in_level_key = f"in{target_level}"
-            if in_level_key in analysis_without_terms:
-                return {
-                    "success": True,
-                    "data": {
-                        "adapted_text": adapted_data['adapted_text'],
-                        "key_elements": {
-                            "key_sentences": adapted_data.get('key_sentences', []),
-                            "professional_terms": adapted_data.get('professional_terms', [])
-                        },
-                        "statistics": {
-                            "text_with_terms": {
-                                "level_metrics": {
-                                    "level_number": analysis_with_terms.get('level_number', 0),
-                                    "level_comment": analysis_with_terms.get('level_comment', '')
-                                },
-                                "keywords": analysis_with_terms.get('key_words', []),
-                                "basic_metrics": {
-                                    "word_count": analysis_with_terms.get('words', 0),
-                                    "sentence_count": analysis_with_terms.get('sentences', 0),
-                                    "reading_for_detail_speed": analysis_with_terms.get('reading_for_detail_speed', ''),
-                                    "skim_reading_speed": analysis_with_terms.get('skim_reading_speed', '')
-                                },
-                                "in_level": f"{analysis_with_terms.get(in_level_key, 0)}%",
-                                "not_in_level": analysis_with_terms.get(f'not_in{target_level}', [])
-                            },
-                            "text_without_terms": {
-                                "level_metrics": {
-                                    "level_number": analysis_without_terms.get('level_number', 0),
-                                    "level_comment": analysis_without_terms.get('level_comment', '')
-                                }
-                            }
-                        }
-                    },
-                    "error": None
-                }
-            else:
-                base_prompt["previous_attempt_feedback"] = {
-                    "message": "Уровень адаптированного текста не соответствует целевому уровню",
-                    "target_level": target_level,
-                    "current_level_metrics": analysis_with_terms.get(in_level_key, "N/A"),
-                    "required_adjustments": "Упрости текст еще больше, используй более простые конструкции"
-                }
-
-        except json.JSONDecodeError:
-            return {
-                "success": False,
-                "data": None,
-                "error": "Invalid JSON response from DeepSeek"
-            }
-        except Exception as e:
-            return {
-                "success": False,
-                "data": None,
-                "error": f"Unexpected error: {str(e)}"
-            }
-
-    if last_adapted_data and last_analysis_with_terms and last_analysis_without_terms:
-        in_level_key = f"in{target_level}"
+    if response['status'] != 200:
         return {
             "success": False,
-            "data": {
-                "adapted_text": last_adapted_data['adapted_text'],
-                "key_elements": {
-                    "key_sentences": last_adapted_data.get('key_sentences', []),
-                    "professional_terms": last_adapted_data.get('professional_terms', [])
-                }
-            },
-            "text_with_terms": {
-                "level_metrics": {
-                    "level_number": last_analysis_with_terms.get('level_number', 0),
-                    "level_comment": last_analysis_with_terms.get('level_comment', '')
-                },
-                "keywords": last_analysis_with_terms.get('key_words', []),
-                "basic_metrics": {
-                    "word_count": last_analysis_with_terms.get('words', 0),
-                    "sentence_count": last_analysis_with_terms.get('sentences', 0),
-                    "reading_for_detail_speed": last_analysis_with_terms.get('reading_for_detail_speed', ''),
-                    "skim_reading_speed": last_analysis_with_terms.get('skim_reading_speed', '')
-                },
-                "in_level": f"{last_analysis_with_terms.get(in_level_key, 0)}%",
-                "not_in_level": last_analysis_with_terms.get(f'not_in{target_level}', [])
-            },
-            "text_without_terms": {
-                "level_metrics": {
-                    "level_number": last_analysis_without_terms.get('level_number', 0),
-                    "level_comment": last_analysis_without_terms.get('level_comment', '')
-                }
-            },
-            "error": f"Не удалось достичь целевого уровня {target_level} после {max_attempts} попыток"
+            "data": None,
+            "error": f"DeepSeek API error: {response.get('reason', 'Unknown error')}"
         }
-        return {"status": response.status_code, "reason": response.text}
+
+    try:
+        response['data'] = re.sub(r'^```json\s*|\s*```$', '', response['data'], flags=re.MULTILINE)
+        adapted_data = json.loads(response['data'])
+
+        if 'adapted_text' not in adapted_data:
+            return {
+                "success": False,
+                "data": None,
+                "error": "Invalid response format: missing adapted_text"
+            }
+
+        analysis_with_terms = get_textometr_analysis(adapted_data['adapted_text'])
+        analysis_without_terms = get_textometr_analysis(adapted_data['adapted_text_without_terms'])
+
+        if analysis_with_terms and analysis_without_terms:
+            return {
+                "success": True,
+                "data": {
+                    "target_level": target_level,
+                    "adapted_text": adapted_data['adapted_text'],
+                    "key_elements": {
+                        "key_sentences": adapted_data.get('key_sentences', []),
+                        "professional_terms": adapted_data.get('professional_terms', [])
+                    },
+                    "statistics": {
+                        "text_with_terms": {
+                            "level_metrics": {
+                                "level_number": analysis_with_terms.get('level_number', 0),
+                                "level_comment": analysis_with_terms.get('level_comment', '')
+                            },
+                            "keywords": analysis_with_terms.get('key_words', []),
+                            "basic_metrics": {
+                                "word_count": analysis_with_terms.get('words', 0),
+                                "sentence_count": analysis_with_terms.get('sentences', 0),
+                                "reading_for_detail_speed": analysis_with_terms.get('reading_for_detail_speed', ''),
+                                "skim_reading_speed": analysis_with_terms.get('skim_reading_speed', '')
+                            },
+                            "in_level": f"{analysis_with_terms.get(in_level_key, 0)}%",
+                            "not_in_level": analysis_with_terms.get(f'not_in{target_level}', [])
+                        },
+                        "text_without_terms": {
+                            "level_metrics": {
+                                "level_number": analysis_without_terms.get('level_number', 0),
+                                "level_comment": analysis_without_terms.get('level_comment', '')
+                            }
+                        }
+                    }
+                },
+                "error": None
+            }
+        else:
+            return {
+                "success": False,
+                "data": {
+                    "target_level": target_level,
+                    "adapted_text": adapted_data['adapted_text'],
+                    "key_elements": {
+                        "key_sentences": adapted_data.get('key_sentences', []),
+                        "professional_terms": adapted_data.get('professional_terms', [])
+                    }
+                },
+                "error": "Fail to fetch text statistics"
+            }
+
+    except json.JSONDecodeError:
+        return {
+            "success": False,
+            "data": None,
+            "error": "Invalid JSON response from DeepSeek"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "data": None,
+            "error": f"Unexpected error: {str(e)}"
+        }
