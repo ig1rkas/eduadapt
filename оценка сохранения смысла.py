@@ -4,17 +4,17 @@ import pandas as pd
 import numpy as np
 
 # Считывание данных из файла
-df = pd.read_csv('/content/drive/MyDrive/Colab Notebooks/texts.csv')
+df = pd.read_csv('texts 2.csv')
 
 orig_texts = df['Текст без терминов'].dropna().tolist()
 adapted_B1 = df['Адаптированный текст(B1) без терминов'].dropna().tolist()
 adapted_B2 = df['Адаптированный текст(B2) без терминов'].dropna().tolist()
-adapted_C1 = df['Адаптированный текст(С1) без терминов'].dropna().tolist()
+# adapted_C1 = df['Адаптированный текст(С1) без терминов'].dropna().tolist()
 
 orig_texts_terms = df['Исходные тексты с терминами'].dropna().tolist()
 adapted_B1_terms = df['Адаптированный текст(B1) с терминами'].dropna().tolist()
 adapted_B2_terms = df['Адаптированный текст(B2) с терминами'].dropna().tolist()
-adapted_C1_terms = df['Адаптированный текст(С1) с терминами'].dropna().tolist()
+# adapted_C1_terms = df['Адаптированный текст(С1) с терминами'].dropna().tolist()
 
 def estimation(cands, refs):
   P, R, F1 = score(cands, refs, lang="ru", verbose=True, model_type="bert-base-multilingual-cased")
@@ -25,10 +25,10 @@ def estimation(cands, refs):
 
 estim1 = estimation(adapted_B1_terms, orig_texts_terms) # оценка сохранения смысла в адаптированных текстах уровня B1 с терминами
 estim2 = estimation(adapted_B2_terms, orig_texts_terms) # оценка сохранения смысла в адаптированных текстах уровня B2 с терминами
-estim3 = estimation(adapted_C1_terms, orig_texts_terms) # оценка сохранения смысла в адаптированных текстах уровня C1 с терминами
-estim4 = estimation(adapted_B1, orig_texts) # оценка сохранения смысла в адаптированных текстах уровня B1 без терминов
-estim5 = estimation(adapted_B2, orig_texts) # оценка сохранения смысла в адаптированных текстах уровня B2 без терминов
-estim6 = estimation(adapted_C1, orig_texts) # оценка сохранения смысла в адаптированных текстах уровня C1 без терминов
+# estim3 = estimation(adapted_C1_terms, orig_texts_terms) # оценка сохранения смысла в адаптированных текстах уровня C1 с терминами
+estim3 = estimation(adapted_B1, orig_texts) # оценка сохранения смысла в адаптированных текстах уровня B1 без терминов
+estim4 = estimation(adapted_B2, orig_texts) # оценка сохранения смысла в адаптированных текстах уровня B2 без терминов
+# estim6 = estimation(adapted_C1, orig_texts) # оценка сохранения смысла в адаптированных текстах уровня C1 без терминов
 
 # Построение таблицы сравнения
 df = pd.DataFrame({
@@ -44,12 +44,12 @@ df = pd.DataFrame({
     'Percision_estim4': estim4[0],
     'Recall_estim4': estim4[1],
     'F1_score_estim4': estim4[2],
-    'Percision_estim5': estim5[0],
-    'Recall_estim5': estim5[1],
-    'F1_score_estim5': estim5[2],
-    'Percision_estim6': estim6[0],
-    'Recall_estim6': estim6[1],
-    'F1_score_estim6': estim6[2],
+    # 'Percision_estim5': estim5[0],
+    # 'Recall_estim5': estim5[1],
+    # 'F1_score_estim5': estim5[2],
+    # 'Percision_estim6': estim6[0],
+    # 'Recall_estim6': estim6[1],
+    # 'F1_score_estim6': estim6[2],
 }, index=['value'])
 
 df
@@ -59,7 +59,7 @@ result = df
 result
 
 comparison = pd.DataFrame({
-    'estimations': ['estim1', 'estim2', 'estim3', 'estim4', 'estim5', 'estim6'],
+    'estimations': ['estim1', 'estim2', 'estim3', 'estim4'],
     'Precision': result.iloc[0, ::3].to_list(),
     'Recall': result.iloc[0, 1::3].to_list(),
     'F1_score': result.iloc[0, 2::3].to_list()
