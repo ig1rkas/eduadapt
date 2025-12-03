@@ -79,6 +79,13 @@ def adapt_text():
         description: Optional text file to upload.
         required: false
 
+      - name: native_language
+        in: formData
+        type: string
+        description: Native language.
+        required: true
+        example: "en"
+
     consumes:
       - multipart/form-data
     responses:
@@ -112,9 +119,10 @@ def adapt_text():
     target_level = request.form.get('adaptation_level', 'B2')
     original_text = request.form.get('text_input')
     file_part = request.files.get('textFile')
+    native_language = request.form.get('native_language')
 
     try:
-        result = adapt_educational_text(original_text, target_level)
+        result = adapt_educational_text(original_text, target_level, native_language)
         return jsonify(result)
     except Exception as e:
         return jsonify({

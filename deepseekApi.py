@@ -36,13 +36,14 @@ def deepseek_api(user_prompt: str, system_prompt="You are helpful assistant") ->
         return {"status": response.status_code, "reason": response.text}
 
 
-def adapt_educational_text(original_text: str, target_level: str = "B2"):
+def adapt_educational_text(original_text: str, target_level: str = "B2", native_language: str = "en") :
     """
     Функция для адаптации учебных текстов с проверкой уровня сложности
 
     Args:
         original_text (str): Исходный текст для адаптации
         target_level (str): Целевой уровень сложности (B1, B2)
+        native_language (str): Родной язык пользователя ("en", "zh", "ko" и т.д.)
 
     Returns:
         dict: Результат адаптации в формате JSON
@@ -72,7 +73,7 @@ def adapt_educational_text(original_text: str, target_level: str = "B2"):
         "task": [
             "Выделить важные профессиональные термины для обучения",
             "Вернуть такой же исходный текст, заменяя все выделенные термины на '…'",
-            "Упрощай текст на целевой уровень сложности, сохраняя выделенные термины",
+            "Упрощай текст на целевой уровень сложности. Вернуть адаптированный текст, сохраняя выделенные термины",
             "Вернуть такой же адаптированный текст, заменяя все выделенные термины на '…'",
             "Твой ответ должен быть валидным JSON, который можно парсить сразу с помощью json.loads()"
         ],
@@ -85,13 +86,14 @@ def adapt_educational_text(original_text: str, target_level: str = "B2"):
             "professional_terms": [
                 {
                     "term": "термин в тексте в первоначальной форме, включая аббревиатуры",
-                    "translation": "перевод на английский язык",
-                    "definition": "объяснение в стиле целевого уровня",
-                    "examples": ["пример 1", "пример 2"]
+                    "translation": f"перевод на родной язык студентов - {native_language}",
+                    "definition": "объяснение в стиле целевого уровня на русском языке",
+                    "definition_native": f"объяснение в стиле целевого уровня на родном языке студентов - {native_language}",
+                    "examples": ["пример 1 на русском языке", "пример 2 на русском языке"]
                 }
             ],
             "original_text_without_terms": "исходный текст без терминов",
-            "adapted_text": "адаптированный текст С ТЕРМИНАМИ",
+            "adapted_text": "адаптированный текст с терминами. СОХРАНИТЕ ТЕРМИНЫ!",
             "adapted_text_without_terms": "адаптированный текст без терминов",
             "key_sentences": [
                 "выделить несколько (не все) ключевые предложения из адаптированного текста С ТЕРМИНАМИ (adapted_text). НЕ ПЕРЕФОРМУЛИРУЙТЕ ИХ!"]
