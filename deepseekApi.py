@@ -24,7 +24,7 @@ def deepseek_api(user_prompt: str, system_prompt="You are helpful assistant") ->
     data = {
         "model": "deepseek-chat",
         "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
-        "temperature": 0.7,
+        "temperature": 0.7
         # "max_tokens": 2048,
     }
     response = requests.post(DEEPSEEK_API_URL, json=data, headers=headers)
@@ -34,42 +34,6 @@ def deepseek_api(user_prompt: str, system_prompt="You are helpful assistant") ->
         return {"status": 200, "data": result["choices"][0]["message"]["content"]}
     else:
         return {"status": response.status_code, "reason": response.text}
-
-
-def get_summarising_test(source_text: str):
-    prompt = f"""
-ЗАДАЧА:
-Составь на основе приведенного ниже текста тест из нескольких вопросов, чтобы проверить, как читатель понял его содержание. Для каждого вопроса сделай несколько вариантов ответа, из которых верным будет только один. Количество вопросов и вариантов ответов определи сам, исходя из длины текста и количества важной информации в нем. При генерации ответа не используй разметку, отправь чистый текст, как указано в шаблоне ниже.
-
-ИСХОДНЫЙ ТЕКСТ: 
-{source_text}
-
-ФОРМАТ ОТВЕТА (JSON):
-{{
-"success": true,
-"data": {{
-    "questions": [
-      {{
-        "id": <порядковый номер вопроса, начиная с 1>,
-        "question": "<вопрос>",
-        "type": "one_choice",
-        "options": [
-          "<вариант 1>",
-          "<вариант 2>", 
-          …
-        ],
-        "correct_answer": <номер правильного ответа>,
-        "explanation": "<цитата из текста, по которой можно определить, что данный ответ является правильным>"
-      }}
-    ],
-    "test_config": {{
-      "total_questions": <количество вопросов>
-    }}
-  }},
-  "error": null
-}}
-"""
-    return json.loads(deepseek_api(prompt)["data"])
 
 
 def adapt_educational_text(original_text: str, target_level: str = "B2"):
@@ -104,12 +68,13 @@ def adapt_educational_text(original_text: str, target_level: str = "B2"):
     level_rules = adaptation_rules.get(target_level, adaptation_rules["B2"])
 
     base_prompt = {
-        "role": "Ты - помощник для адаптации учебных текстов для иностранных студентов",
+        "role": "Ты - помощник для адаптации учебных текстов для иностранных студентов. ",
         "task": [
             "Выделить важные профессиональные термины для обучения",
             "Вернуть такой же исходный текст, заменяя все выделенные термины на '…'",
             "Упрощай текст на целевой уровень сложности, сохраняя выделенные термины",
-            "Вернуть такой же адаптированный текст, заменяя все выделенные термины на '…'"
+            "Вернуть такой же адаптированный текст, заменяя все выделенные термины на '…'",
+            "Твой ответ должен быть валидным JSON, который можно парсить сразу с помощью json.loads()"
         ],
         "level_of_original_text": "Выше C2",
         "target_level": target_level,
@@ -126,10 +91,10 @@ def adapt_educational_text(original_text: str, target_level: str = "B2"):
                 }
             ],
             "original_text_without_terms": "исходный текст без терминов",
-            "adapted_text": "адаптированный текст с терминами",
+            "adapted_text": "адаптированный текст С ТЕРМИНАМИ",
             "adapted_text_without_terms": "адаптированный текст без терминов",
             "key_sentences": [
-                "из каждого абзаца адаптированного текста с терминами выделить 1-2 ключевые предложения. НЕ ПЕРЕФОРМУЛИРУЙТЕ ИХ!"]
+                "выделить несколько (не все) ключевые предложения из адаптированного текста С ТЕРМИНАМИ (adapted_text). НЕ ПЕРЕФОРМУЛИРУЙТЕ ИХ!"]
         },
         "original_text": original_text
     }

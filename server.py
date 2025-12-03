@@ -62,7 +62,7 @@ def adapt_text():
       - name: adaptation_level
         in: formData
         type: string
-        description: Target complexity level (e.g., A1, A2, B1, B2, C1, C2).
+        description: Target complexity level (e.g., B1, B2).
         required: false
         default: "B2"
 
@@ -74,8 +74,8 @@ def adapt_text():
         example: "Сложный научный текст..."
 
       - name: textFile
-        in: formData # 在 OAI 2.0 中，文件也放在 formData
-        type: file   # type 必须是 file
+        in: formData
+        type: file
         description: Optional text file to upload.
         required: false
 
@@ -203,7 +203,6 @@ def registration():
     try:
         db_sess = db_session.create_session()
 
-        # 检查用户是否已存在
         existing_user = db_sess.query(User).filter(
             (User.username == data["username"]) | (User.email == data["email"])
         ).first()
