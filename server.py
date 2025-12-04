@@ -1,19 +1,13 @@
-import smtplib
-from random import randint
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from config import EMAIL_FROM, EMAIL_PASSWORT, SMPT_PORT, SMPT_SERVER
-from datetime import datetime
 from flasgger import Swagger
 from flask import Flask, jsonify, request, json
+
+from modules import register_and_auth as auth
 from data import db_session
-from data.users import User
-from data.verification_code import VerificationCode
-from deepseek_api import deepseek_api
-from wordcloud_generate import generate_word_cloud_api
-from text_adaptation import adapt_educational_text
-from test_generate import get_test_generate_user_prompt
-import register_and_auth as auth
+from modules.deepseek_api import deepseek_api
+from modules.test_generate import get_test_generate_user_prompt
+from modules.text_adaptation import adapt_educational_text
+from modules.update_user import ProfileUpdateService, PasswordChangeService, EmailChangeService
+from modules.wordcloud_generate import generate_word_cloud_api
 
 db_session.global_init("db/main.db")
 
@@ -54,7 +48,7 @@ def adapt_text():
     summary: Adapt text complexity using either direct input or an uploaded file.
     description: This endpoint accepts text content either as a plain form field or as an uploaded file.
 
-    parameters:
+    Parameters:
       - name: adaptation_level
         in: formData
         type: string
@@ -82,7 +76,7 @@ def adapt_text():
         required: true
         example: "en"
 
-    consumes:
+    Consumes:
       - multipart/form-data
     responses:
       200:
@@ -457,58 +451,7 @@ def profile():
       500: 
         description: Update failed
     """
-    if request.method != "POST":
-        return jsonify({"error": "Use POST method", "success": False}), 405
-
-    data = request.get_json()
-
-    if not data or "user_id" not in data:
-        return jsonify({"error": "Missing user_id", "success": False}), 400
-
-    db_sess = None
-
-    try:
-        db_sess = db_session.create_session()
-        user = db_sess.query(User).filter(User.id == data["user_id"]).first()
-        if not user:
-            db_sess.close()
-            return jsonify({"error": "user not found", "success": False}), 404
-        if "username" in data:
-            existing_user = db_sess.query(User).filter(User.username == data["username"]).first()
-            if existing_user:
-                db_sess.close()
-                return jsonify({"error": "username already exists", "success": False}), 409
-            user.username = data["username"]
-        if "native_language" in data:
-            user.native_lang = data["native_language"]
-        if "russian_level" in data:
-            user.russian_level = data["russian_level"]
-        db_sess.commit()
-        db_sess.refresh(user)
-        return jsonify({
-
-            "data": {
-                "id": user.id,
-                "username": user.username,
-                "native_language": user.native_lang,
-                "email": user.email,
-                "russian_level": user.russian_level,
-                "updated_at": datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ"),
-            },
-            "success": True,
-            "error": None,
-        }), 200
-
-    except Exception as e:
-        if db_sess:
-            db_sess.rollback()
-        return jsonify({
-            "error": f"Failed to update profile: {str(e)}",
-            "success": False
-        }), 500
-    finally:
-        if db_sess:
-            db_sess.close()
+    return ProfileUpdateService.handle_profile_update()
 
 
 @app.route("/api/user/change-password", methods=["POST"])
@@ -565,48 +508,7 @@ def change_password():
       500: 
         description: Password change failed
     """
-    if request.method != "POST":
-        return jsonify({"error": "Use POST method", "success": False}), 405
-
-    data = request.get_json()
-    if "user_id" not in data or "new_password" not in data or "current_password" not in data:
-        return jsonify({"error": "Missing required fields", "success": False}), 400
-    db_sess = None
-    try:
-        db_sess = db_session.create_session()
-        user = db_sess.query(User).filter(User.id == data["user_id"]).first()
-        if not user:
-            db_sess.close()
-            return jsonify({"error": "user not found", "success": False}), 404
-        if user.password != data["current_password"]:
-            db_sess.close()
-            return jsonify({"error": "invalid current password", "success": False}), 400
-        if data["current_password"] == data["new_password"]:
-            db_sess.close()
-            return jsonify({"error": "new password must be different from current password", "success": False}), 400
-        user.password = data["new_password"]
-        db_sess.commit()
-        db_sess.refresh(user)
-        return jsonify({
-            "data": {
-                "id": user.id,
-                "message": "password changed successfully",
-                "updated_at": datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ"),
-            },
-            "success": True,
-            "error": None,
-        }), 200
-
-    except Exception as e:
-        if db_sess:
-            db_sess.rollback()
-        return jsonify({
-            "error": f"Failed to change password: {str(e)}",
-            "success": False
-        }), 500
-    finally:
-        if db_sess:
-            db_sess.close()
+    return PasswordChangeService.handle_password_change()
 
 
 @app.route("/api/user/change-email", methods=["POST"])
@@ -658,61 +560,7 @@ def change_email():
       500: 
         description: Bad request
     """
-    if request.method != "POST":
-        return jsonify({"error": "Use POST method", "success": False}), 405
-
-    data = request.get_json()
-
-    if "user_id" not in data or "new_email" not in data:
-        return jsonify({"error": "Missing required fields", "success": False}), 400
-
-    db_sess = db_session.create_session()
-    try:
-        user = db_sess.query(User).filter(User.id == data["user_id"]).first()
-
-        if not user:
-            db_sess.close()
-            return jsonify({"error": "user not found", "success": False}), 404
-
-        existing_user = db_sess.query(User).filter(User.email == data["new_email"]).first()
-        if existing_user:
-            db_sess.close()
-            return jsonify({"error": "email already exists", "success": False}), 400
-        if user.email == data["new_email"]:
-            db_sess.close()
-            return jsonify({"error": "new email must be different from current email", "success": False}), 400
-
-        user.email = data["new_email"]
-
-        user.status = "unverified"
-        verification_key = str(randint(100000, 999999))
-
-        # удалить старый код подтверждения
-        db_sess.query(VerificationCode).filter(
-            VerificationCode.user_id == user.id
-        ).delete()
-
-        verification = VerificationCode(user_id=user.id, code=verification_key)
-        db_sess.add(verification)
-        db_sess.commit()
-        db_sess.refresh(user)
-
-        auth.send_secret_key(user.email, verification_key)
-
-        return jsonify({
-            "data": {
-                "id": user.id,
-                "message": "Email updated. Please verify your new email.",
-                "updated_at": datetime.now().isoformat()
-            },
-            "success": True,
-            "error": None
-        }), 200
-
-    except Exception as e:
-        return jsonify({"error": str(e), "success": False}), 500
-    finally:
-        db_sess.close()
+    return EmailChangeService.handle_email_change()
 
 
 @app.route('/api/word-cloud', methods=['POST'])
@@ -760,7 +608,7 @@ def word_cloud_endpoint():
                 image_base64: 
                   type: string 
                   description: Base64 encoded PNG image of the word cloud 
-                  example: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA..." 
+                  example: "data:image/png;base64,iVBORw0KGgoUhEUgAA..."
                 image_format: 
                   type: string 
                   example: "png" 
@@ -805,72 +653,72 @@ def word_cloud_endpoint():
 
 
 # Это api опционально, еще не до конца сделано, поэтому не добавляете docstring для него
-@app.route("/api/auth/recover-password", methods=["POST"])
-def recover_password():
-    global auth_keys
-    data = request.get_json()
-    if "verification_code" not in data:
-        if "email" in data and "user_id" in data:
-            key = randint(100000, 999999)
-            subject = f'Ваш код подтверждения в EduAdapt: {key}'
-            body = f"""
-      Здравствуйте, ваш секретный код в EduAdapt:
-      {key}
-      """
-
-            msg = MIMEMultipart()
-            msg['From'] = EMAIL_FROM
-            msg['To'] = data['email']
-            msg['Subject'] = subject
-            msg.attach(MIMEText(body, 'plain'))
-
-            try:
-                server = smtplib.SMTP(SMPT_SERVER, SMPT_PORT)
-                server.starttls()
-                server.login(EMAIL_FROM, EMAIL_PASSWORT)
-                server.send_message(msg)
-                auth_keys[data['user_id']] = key
-                return jsonify({
-                    "success": True,
-                    "data": {
-                        "message": "Password reset code has been sent to your email",
-                        "email": data['email'],
-                        "expires_in": 600
-                    },
-                    "error": None
-                }), 200
-            except Exception as e:
-                return jsonify({
-                    'success': False,
-                    "error": f"Произошла ошибка: {e}",
-                }), 500
-            finally:
-                server.quit()
-        else:
-            return jsonify({
-                "success": False,
-                "error": "You should give email or user_id in params"
-            }), 500
-    else:
-        if auth_keys[data['user_id']] == data['verification_code']:
-            db_sess = db_session.create_session()
-            user = db_sess.query(User).filter(User.id == data["user_id"]).first()
-            user.password = data['new_password']
-            db_sess.commit()
-            db_sess.close()
-            return jsonify({
-                "success": True,
-                "data": {
-                    "message": "Password has been reset successfully",
-                    "user_id": user.id
-                },
-                "error": None
-            })
-        else:
-            return jsonify({
-                "success": False,
-                "error": "Uncorrect verification code"
-            })
+# @app.route("/api/auth/recover-password", methods=["POST"])
+# def recover_password():
+#     global auth_keys
+#     data = request.get_json()
+#     if "verification_code" not in data:
+#         if "email" in data and "user_id" in data:
+#             key = randint(100000, 999999)
+#             subject = f'Ваш код подтверждения в EduAdapt: {key}'
+#             body = f"""
+#       Здравствуйте, ваш секретный код в EduAdapt:
+#       {key}
+#       """
+#
+#             msg = MIMEMultipart()
+#             msg['From'] = EMAIL_FROM
+#             msg['To'] = data['email']
+#             msg['Subject'] = subject
+#             msg.attach(MIMEText(body, 'plain'))
+#
+#             try:
+#                 server = smtplib.SMTP(SMPT_SERVER, SMPT_PORT)
+#                 server.starttls()
+#                 server.login(EMAIL_FROM, EMAIL_PASSWORT)
+#                 server.send_message(msg)
+#                 auth_keys[data['user_id']] = key
+#                 return jsonify({
+#                     "success": True,
+#                     "data": {
+#                         "message": "Password reset code has been sent to your email",
+#                         "email": data['email'],
+#                         "expires_in": 600
+#                     },
+#                     "error": None
+#                 }), 200
+#             except Exception as e:
+#                 return jsonify({
+#                     'success': False,
+#                     "error": f"Произошла ошибка: {e}",
+#                 }), 500
+#             finally:
+#                 server.quit()
+#         else:
+#             return jsonify({
+#                 "success": False,
+#                 "error": "You should give email or user_id in params"
+#             }), 500
+#     else:
+#         if auth_keys[data['user_id']] == data['verification_code']:
+#             db_sess = db_session.create_session()
+#             user = db_sess.query(User).filter(User.id == data["user_id"]).first()
+#             user.password = data['new_password']
+#             db_sess.commit()
+#             db_sess.close()
+#             return jsonify({
+#                 "success": True,
+#                 "data": {
+#                     "message": "Password has been reset successfully",
+#                     "user_id": user.id
+#                 },
+#                 "error": None
+#             })
+#         else:
+#             return jsonify({
+#                 "success": False,
+#                 "error": "Uncorrect verification code"
+#             })
 
 
 @app.route("/api/generate-test", methods=["POST"])

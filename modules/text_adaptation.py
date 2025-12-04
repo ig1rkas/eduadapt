@@ -1,7 +1,9 @@
 import json
-from deepseek_api import deepseek_api
-from text_analysis import get_textometr_analysis
+from modules.deepseek_api import deepseek_api
 import re
+
+from modules.text_analysis import get_textometr_analysis
+
 
 def get_adaptation_system_prompt(native_language: str) -> str:
     """
