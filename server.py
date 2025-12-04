@@ -1,23 +1,18 @@
 import smtplib
-
 from random import randint
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-
 from config import EMAIL_FROM, EMAIL_PASSWORT, SMPT_PORT, SMPT_SERVER
-
 from datetime import datetime
-
 from flasgger import Swagger
 from flask import Flask, jsonify, request, json
-
 from data import db_session
 from data.users import User
 from data.verification_code import VerificationCode
-
+from deepseek_api import deepseek_api
 from wordcloud_generate import generate_word_cloud_api
-
-from deepseekApi import deepseek_api, adapt_educational_text
+from text_adaptation import adapt_educational_text
+from test_generate import get_test_generate_user_prompt
 
 db_session.global_init("db/main.db")
 
@@ -223,7 +218,6 @@ def registration():
                 "success": False
             }), 409
 
-        # 创建新用户
         user = User()
         user.username = data["username"]
         user.password = data["password"]
@@ -1101,7 +1095,7 @@ def send_secret_key(email, key):
     except Exception as e:
         return False
 
-
+# Это api опционально, еще не до конца сделано, поэтому не добавляете docstring для него
 @app.route("/api/auth/recover-password", methods=["POST"])
 def recover_password():
     global auth_keys
@@ -1259,38 +1253,7 @@ def get_summarising_test():
         }), 400
 
     source_text = data["text"]
-    prompt = f"""
-ЗАДАЧА:
-Составь на основе приведенного ниже текста тест из нескольких вопросов, чтобы проверить, как читатель понял его содержание. Для каждого вопроса сделай несколько вариантов ответа, из которых верным будет только один. Количество вопросов и вариантов ответов определи сам, исходя из длины текста и количества важной информации в нем. При генерации ответа не используй разметку, отправь чистый текст, как указано в шаблоне ниже.
-
-ИСХОДНЫЙ ТЕКСТ: 
-{source_text}
-
-ФОРМАТ ОТВЕТА (JSON):
-{{
-"success": true,
-"data": {{
-    "questions": [
-      {{
-        "id": <порядковый номер вопроса, начиная с 1>,
-        "question": "<вопрос>",
-        "type": "one_choice",
-        "options": [
-          "<вариант 1>",
-          "<вариант 2>", 
-          …
-        ],
-        "correct_answer": <номер правильного ответа>,
-        "explanation": "<цитата из текста, по которой можно определить, что данный ответ является правильным>"
-      }}
-    ],
-    "test_config": {{
-      "total_questions": <количество вопросов>
-    }}
-  }},
-"error": null
-}}
-    """
+    prompt = get_test_generate_user_prompt(source_text)
 
     messages = [
         {"role": "system", "content": "Ты - помощник для генерации теста по учебному тексту"},
