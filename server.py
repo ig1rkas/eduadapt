@@ -1,23 +1,19 @@
 import smtplib
-
 from random import randint
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-
 from config import EMAIL_FROM, EMAIL_PASSWORT, SMPT_PORT, SMPT_SERVER
-
 from datetime import datetime
-
 from flasgger import Swagger
 from flask import Flask, jsonify, request, json
-
 from data import db_session
 from data.users import User
 from data.verification_code import VerificationCode
-
+from deepseek_api import deepseek_api
 from wordcloud_generate import generate_word_cloud_api
-
-from deepseekApi import deepseek_api, adapt_educational_text
+from text_adaptation import adapt_educational_text
+from test_generate import get_test_generate_user_prompt
+import register_and_auth as auth
 
 db_session.global_init("db/main.db")
 
@@ -198,117 +194,7 @@ def registration():
               type: boolean
               example: false
     """
-
-    if request.method != "POST":
-        return jsonify({"error": "Use", "success": False}), 500
-
-    data = request.get_json()
-    required_fields = ["username", "password", "email", "native_language", "russian_level"]
-    if not all(field in data for field in required_fields):
-        return jsonify({"error": "Не хватает данных", "success": False}), 400
-
-    db_sess = None
-
-    try:
-        db_sess = db_session.create_session()
-
-        existing_user = db_sess.query(User).filter(
-            (User.username == data["username"]) | (User.email == data["email"])
-        ).first()
-
-        if existing_user:
-            db_sess.close()
-            return jsonify({
-                "error": "Логин или почта уже зарегистрирован",
-                "success": False
-            }), 409
-
-        # 创建新用户
-        user = User()
-        user.username = data["username"]
-        user.password = data["password"]
-        user.email = data["email"]
-        user.native_lang = data["native_language"]
-        user.russian_level = data["russian_level"]
-        user.registration_date = datetime.now()
-        user.status = "unverified"
-
-        db_sess.add(user)
-        db_sess.commit()
-        db_sess.refresh(user)
-
-        user_id = user.id
-        email = user.email
-
-        key = str(randint(100000, 999999))
-
-        # если есть старый код подтверждения, то удалить его
-        old_codes = db_sess.query(VerificationCode).filter(
-            VerificationCode.user_id == user_id
-        ).all()
-
-        for old_code in old_codes:
-            db_sess.delete(old_code)
-
-        # создать новый код подтверждения
-        verification = VerificationCode(
-            user_id=user_id,
-            code=key,
-            expiry_minutes=2
-        )
-
-        db_sess.add(verification)
-        db_sess.commit()
-
-        # отправить код на почту
-        if not send_secret_key(email, key):
-            # если код не отправлен на почту, то нужно удалить пользователя и сохраненный код
-            cleanup_session = db_session.create_session()
-            try:
-                user_to_delete = cleanup_session.query(User).filter(User.id == user_id).first()
-                if user_to_delete:
-                    cleanup_session.delete(user_to_delete)
-
-                code_to_delete = cleanup_session.query(VerificationCode).filter(
-                    VerificationCode.user_id == user_id
-                ).first()
-                if code_to_delete:
-                    cleanup_session.delete(code_to_delete)
-
-                cleanup_session.commit()
-                return jsonify({
-                    "error": "Регистрация не прошла. Не удалось отправить код на почту.",
-                    "success": False
-                }), 500
-            finally:
-                cleanup_session.close()
-
-        response_data = {
-            "id": user.id,
-            "username": user.username,
-            "native_language": user.native_lang,
-            "email": user.email,
-            "russian_level": user.russian_level,
-            "status": user.status,
-            "registration_date": user.registration_date.isoformat() if user.registration_date else None,
-        }
-
-        return jsonify({
-            "error": None,
-            "success": True,
-            "data": response_data
-        }), 200
-
-    except Exception as e:
-        if db_sess:
-            db_sess.rollback()
-        return jsonify({
-            "error": f"Регистрация не прошла: {str(e)}",
-            "success": False
-        }), 500
-    finally:
-        if db_sess:
-            db_sess.close()
+    return auth.RegistrationService.handle_registration()
 
 
 @app.route("/api/auth/verify-mail", methods=["POST"])
@@ -438,97 +324,7 @@ def verify_mail():
                       type: string
                       example: "Use the POST method"
         """
-    if request.method != "POST":
-        return jsonify({"error": "Use POST Method", "success": False}), 405
-
-    data = request.get_json()
-    user_id = data.get('user_id')
-    verification_code = data.get('verification_code')
-
-    if not user_id or not verification_code:
-        return jsonify({
-            "success": False,
-            "error": "Отсутствует user_id или verification_code"
-        }), 400
-
-    db_sess = None
-
-    try:
-        db_sess = db_session.create_session()
-
-        user = db_sess.query(User).filter(User.id == user_id).first()
-        if not user:
-            return jsonify({
-                "success": False,
-                "error": "Пользователя отсутствует"
-            }), 404
-
-        if user.status == "active":
-            return jsonify({
-                "success": True,
-                "error": None,
-                "message": "Данная почта уже была подтверждена"
-            }), 200
-
-        # поиск кода подтверждения в бд
-        verification = db_sess.query(VerificationCode).filter(
-            VerificationCode.user_id == user_id
-        ).first()
-
-        if not verification:
-            return jsonify({
-                "success": False,
-                "error": "Код подтверждения отсутствует или уже не действует"
-            }), 404
-
-        if verification.is_expired():
-            db_sess.delete(verification)
-            db_sess.commit()
-            return jsonify({
-                "success": False,
-                "error": "Код подтверждения отсутствует уже не действует"
-            }), 410
-
-        if verification.code != str(verification_code):
-            return jsonify({
-                "success": False,
-                "error": "Код подтверждения неверный"
-            }), 401
-
-        # Верификация прошла, удалить данные в бд verification_codes
-        db_sess.delete(verification)
-        user.status = "active"
-        user.verified_at = datetime.now()
-        db_sess.commit()
-
-        response_data = {
-            "id": user.id,
-            "username": user.username,
-            "native_language": user.native_lang,
-            "email": user.email,
-            "russian_level": user.russian_level,
-            "status": user.status,
-            "registration_date": user.registration_date.isoformat() if user.registration_date else None,
-            "verified_at": user.verified_at.isoformat() if user.verified_at else None
-        }
-
-        return jsonify({
-            "data": response_data,
-            "success": True,
-            "error": None,
-            "message": "Верификация прошла успешно."
-        }), 200
-
-    except Exception as e:
-        if db_sess:
-            db_sess.rollback()
-        return jsonify({
-            "success": False,
-            "error": f"Верификация не прошла: {str(e)}"
-        }), 500
-    finally:
-        if db_sess:
-            db_sess.close()
+    return auth.VerificationService.handle_verification()
 
 
 @app.route("/api/auth/login", methods=["POST"])
@@ -599,72 +395,7 @@ def login():
                type: boolean
                example: false
     """
-    if request.method != "POST":
-        return jsonify({"error": "Use POST method", "success": False}), 405
-
-    data = request.get_json()
-
-    if not data or "login" not in data or "password" not in data:
-        return jsonify({"error": "Missing login or password", "success": False}), 400
-
-    db_sess = None
-
-    try:
-        db_sess = db_session.create_session()
-
-        login_input = data["login"]
-        password_input = data["password"]
-
-        user = db_sess.query(User).filter(User.username == login_input).first()
-
-        if not user:
-            user = db_sess.query(User).filter(User.email == login_input).first()
-
-        if not user:
-            return jsonify({
-                "error": "Wrong login or password",
-                "success": False
-            }), 401
-
-        if user.password != password_input:
-            return jsonify({
-                "error": "Wrong login or password",
-                "success": False
-            }), 401
-
-        if user.status != "active":
-            return jsonify({
-                "error": "Account not verified. Please verify your email first.",
-                "success": False
-            }), 403
-
-        response_data = {
-            "id": user.id,
-            "username": user.username,
-            "native_language": user.native_lang,
-            "email": user.email,
-            "russian_level": user.russian_level,
-            "status": user.status,
-            "registration_date": user.registration_date.isoformat() if user.registration_date else None,
-            "verified_at": user.verified_at.isoformat() if user.verified_at else None,
-        }
-
-        return jsonify({
-            "data": response_data,
-            "success": True,
-            "error": None,
-            "message": "Login successful"
-        }), 200
-
-    except Exception as e:
-        print(f"Login error: {e}")
-        return jsonify({
-            "error": f"Login failed: {str(e)}",
-            "success": False
-        }), 500
-    finally:
-        if db_sess:
-            db_sess.close()
+    return auth.LoginService.handle_login()
 
 
 @app.route("/api/user/profile", methods=["POST"])
@@ -966,7 +697,7 @@ def change_email():
         db_sess.commit()
         db_sess.refresh(user)
 
-        send_secret_key(user.email, verification_key)
+        auth.send_secret_key(user.email, verification_key)
 
         return jsonify({
             "data": {
@@ -1073,35 +804,7 @@ def word_cloud_endpoint():
         }), 500
 
 
-def send_secret_key(email, key):
-    """
-    Отправляет 6-значный код подтверждения на указанный email.
-
-    Возвращает True в случае успеха, False в случае неудачи.
-    """
-    subject = f'Ваш код подтверждения в EduAdapt: {key}'
-    body = f"""
-      Здравствуйте, ваш секретный код в EduAdapt:
-      {key}
-      """
-
-    msg = MIMEMultipart()
-    msg['From'] = EMAIL_FROM
-    msg['To'] = email
-    msg['Subject'] = subject
-    msg.attach(MIMEText(body, 'plain'))
-
-    try:
-        server = smtplib.SMTP(SMPT_SERVER, SMPT_PORT)
-        server.starttls()
-        server.login(EMAIL_FROM, EMAIL_PASSWORT)
-        server.send_message(msg)
-        server.quit()
-        return True
-    except Exception as e:
-        return False
-
-
+# Это api опционально, еще не до конца сделано, поэтому не добавляете docstring для него
 @app.route("/api/auth/recover-password", methods=["POST"])
 def recover_password():
     global auth_keys
@@ -1259,38 +962,7 @@ def get_summarising_test():
         }), 400
 
     source_text = data["text"]
-    prompt = f"""
-ЗАДАЧА:
-Составь на основе приведенного ниже текста тест из нескольких вопросов, чтобы проверить, как читатель понял его содержание. Для каждого вопроса сделай несколько вариантов ответа, из которых верным будет только один. Количество вопросов и вариантов ответов определи сам, исходя из длины текста и количества важной информации в нем. При генерации ответа не используй разметку, отправь чистый текст, как указано в шаблоне ниже.
-
-ИСХОДНЫЙ ТЕКСТ: 
-{source_text}
-
-ФОРМАТ ОТВЕТА (JSON):
-{{
-"success": true,
-"data": {{
-    "questions": [
-      {{
-        "id": <порядковый номер вопроса, начиная с 1>,
-        "question": "<вопрос>",
-        "type": "one_choice",
-        "options": [
-          "<вариант 1>",
-          "<вариант 2>", 
-          …
-        ],
-        "correct_answer": <номер правильного ответа>,
-        "explanation": "<цитата из текста, по которой можно определить, что данный ответ является правильным>"
-      }}
-    ],
-    "test_config": {{
-      "total_questions": <количество вопросов>
-    }}
-  }},
-"error": null
-}}
-    """
+    prompt = get_test_generate_user_prompt(source_text)
 
     messages = [
         {"role": "system", "content": "Ты - помощник для генерации теста по учебному тексту"},
