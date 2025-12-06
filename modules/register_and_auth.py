@@ -227,7 +227,7 @@ class VerificationService(AuthService):
                 db_sess.commit()
                 return jsonify({
                     "success": False,
-                    "error": "Код подтверждения отсутствует уже не действует"
+                    "error": "Код подтверждения уже не действует"
                 }), 410
 
             # check if verification code is right

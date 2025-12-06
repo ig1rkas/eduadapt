@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
 from datetime import datetime, timedelta
 
 from data.db_session import SqlAlchemyBase
@@ -7,7 +7,7 @@ class VerificationCode(SqlAlchemyBase):
     __tablename__ = 'verification_codes'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     code = Column(String(6), nullable=False)
     created_at = Column(DateTime, default=datetime.now, nullable=False)
     expires_at = Column(DateTime, nullable=False)
