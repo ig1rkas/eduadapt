@@ -48,36 +48,37 @@ def adapt_text():
     summary: Adapt text complexity using either direct input or an uploaded file.
     description: This endpoint accepts text content either as a plain form field or as an uploaded file.
 
-    Parameters:
+    consumes:
+      - multipart/form-data
+    parameters:
       - name: adaptation_level
         in: formData
         type: string
-        description: Target complexity level (e.g., B1, B2).
+        description: Target complexity level (e.g., B1, B2)
         required: false
         default: "B2"
+        example: "B2"
 
       - name: text_input
         in: formData
         type: string
-        description: Optional raw text input.
+        description: Optional raw text input
         required: false
         example: "Сложный научный текст..."
 
       - name: textFile
         in: formData
         type: file
-        description: Optional text file to upload.
+        description: Optional text file to upload
         required: false
 
       - name: native_language
         in: formData
         type: string
-        description: Native language.
+        description: Native language
         required: true
         example: "en"
 
-    Consumes:
-      - multipart/form-data
     responses:
       200:
         description: Text adapted successfully
@@ -86,6 +87,7 @@ def adapt_text():
           properties:
             success:
               type: boolean
+              example: true
             data:
               type: object
             text_with_terms:
@@ -97,6 +99,37 @@ def adapt_text():
               nullable: true
       400:
         description: Bad request
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "Invalid input parameters"
+      415:
+        description: Unsupported media type
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "Content-Type must be multipart/form-data"
+      500:
+        description: Internal server error
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "Adaptation failed: Error details"
     """
 
     if 'multipart/form-data' not in request.content_type:
