@@ -12,7 +12,7 @@ class User(SqlAlchemyBase):
     username = Column(String(length=100), nullable=False, unique=True)
     password = Column(String(length=100), nullable=False)
     native_lang = Column(String(length=100), nullable=False)
-    email = Column(String(length=40), nullable=False, unique=True)
+    email = Column(String(length=320), nullable=False, unique=True)
     russian_level = Column(String(length=2), nullable=False)
     status = Column(String(length=15), nullable=False, default='unverified')
     registration_date = Column(DateTime, default=datetime.now, nullable=False)
