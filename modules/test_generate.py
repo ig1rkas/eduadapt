@@ -20,7 +20,7 @@ def get_test_generate_user_prompt(source_text: str) -> str:
           "<вариант 2>", 
           …
         ],
-        "correct_answer": <номер правильного ответа>,
+        "correct_answer": <index правильного ответа, начиная с 0>,
         "explanation": "<цитата из текста, по которой можно определить, что данный ответ является правильным>"
       }}
     ],

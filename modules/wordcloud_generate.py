@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import re
 import base64
@@ -97,18 +99,20 @@ class WordCloudGenerator:
         buffer = BytesIO()
 
         # Сохранение в буфер
-        plt.figure(figsize=(self.width / 100, self.height / 100), dpi=100)
+        fig = plt.figure(figsize=(self.width / 100, self.height / 100), dpi=100)
         plt.imshow(wordcloud, interpolation='bilinear')
         plt.axis('off')
         plt.tight_layout(pad=0)
 
         plt.savefig(buffer, format=format, bbox_inches='tight', pad_inches=0,
                     facecolor=self.background_color)
-        plt.close()
+        plt.close(fig)
+        plt.close('all')
 
         # Конвертация в base64
         buffer.seek(0)
         image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+        buffer.close()
 
         return f"data:image/{format};base64,{image_base64}"
 
