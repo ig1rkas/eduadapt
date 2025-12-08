@@ -1006,61 +1006,149 @@ def word_cloud_endpoint():
               default: 400 
               example: 400 
     responses: 
-      200: 
-        description: Word cloud generated successfully 
-        schema: 
-          type: object 
-          properties: 
-            success: 
-              type: boolean 
-              example: true 
-            data: 
-              type: object 
-              properties: 
-                image_base64: 
-                  type: string 
-                  description: Base64 encoded PNG image of the word cloud 
-                  example: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA..." 
-                image_format: 
-                  type: string 
-                  example: "png" 
-                width: 
-                  type: integer 
-                  example: 800 
-                height: 
-                  type: integer 
-                  example: 400 
-            error: 
-              type: string 
-              nullable: true 
-      500: 
-        description: Internal server error
+        400:
+          description: Ошибка валидации входных данных
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                example: false
+              data:
+                type: object
+                nullable: true
+                example: null
+              error:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    example: "VALIDATION_ERROR"
+                  message:
+                    type: string
+                    example: "Параметр 'text' обязателен"
+                  details:
+                    type: string
+                    example: "Укажите текст для генерации облака слов в поле 'text'"
+        415:
+          description: Неверный Content-Type заголовок
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                example: false
+              data:
+                type: object
+                nullable: true
+                example: null
+              error:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    example: "CONTENT_TYPE_ERROR"
+                  message:
+                    type: string
+                    example: "Требуется Content-Type: application/json"
+                  details:
+                    type: string
+                    example: "Отправьте запрос с заголовком Content-Type: application/json"
+        500:
+          description: Внутренняя ошибка сервера
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                example: false
+              data:
+                type: object
+                nullable: true
+                example: null
+              error:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    example: "UNHANDLED_ERROR"
+                  message:
+                    type: string
+                    example: "Непредвиденная ошибка сервера"
+                  details:
+                    type: string
+                    example: "Исключение в обработчике API: ..."
+                  traceback:
+                    type: string
+                    description: "Сокращенный стек вызовов ошибки (до 500 символов)"
     """
     try:
-        # Получение данных из запроса
-        data = request.get_json()
-
-        if not data or 'text' not in data:
+        if not request.is_json:
             return jsonify({
                 "success": False,
                 "data": None,
-                "error": "Текст обязателен для генерации облака слов"
+                "error": {
+                    "type": "CONTENT_TYPE_ERROR",
+                    "message": "Требуется Content-Type: application/json",
+                    "details": "Отправьте запрос с заголовком Content-Type: application/json"
+                }
+            }), 415
+
+        data = request.get_json()
+
+        if not data:
+            return jsonify({
+                "success": False,
+                "data": None,
+                "error": {
+                    "type": "VALIDATION_ERROR",
+                    "message": "Отсутствуют данные в запросе",
+                    "details": "Тело запроса должно содержать JSON данные"
+                }
+            }), 400
+
+        if 'text' not in data:
+            return jsonify({
+                "success": False,
+                "data": None,
+                "error": {
+                    "type": "VALIDATION_ERROR",
+                    "message": "Параметр 'text' обязателен",
+                    "details": "Укажите текст для генерации облака слов в поле 'text'"
+                }
             }), 400
 
         text = data['text']
         width = data.get('width', 800)
         height = data.get('height', 400)
+        mask_path = data.get('mask_path')
 
-        # Генерация облака слов
         result = generate_word_cloud_api(text, width, height)
+
+        if not result["success"]:
+            error_type = result["error"].get("type", "UNKNOWN_ERROR")
+            status_code = 500
+
+            if error_type == "VALIDATION_ERROR":
+                status_code = 400
+            elif error_type == "CONTENT_TYPE_ERROR":
+                status_code = 415
+
+            return jsonify(result), status_code
 
         return jsonify(result)
 
     except Exception as e:
+        import traceback
         return jsonify({
             "success": False,
             "data": None,
-            "error": f"Внутренняя ошибка сервера: {str(e)}"
+            "error": {
+                "type": "UNHANDLED_ERROR",
+                "message": "Непредвиденная ошибка сервера",
+                "details": f"Исключение в обработчике API: {str(e)}",
+                "traceback": traceback.format_exc()[:500]
+            }
         }), 500
 
 def send_secret_key(email, key):

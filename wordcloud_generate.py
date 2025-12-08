@@ -23,13 +23,10 @@ class WordCloudGenerator:
 
     def preprocess_text(self, text: str) -> str:
         """Предобработка текста"""
-        # Приведение к нижнему регистру
         text = text.lower()
 
-        # Удаление специальных символов, оставляем только буквы и пробелы
         text = re.sub(r'[^а-яёa-z\s]', ' ', text)
 
-        # Удаление лишних пробелов
         text = re.sub(r'\s+', ' ', text).strip()
 
         morph = MorphAnalyzer()
@@ -56,11 +53,9 @@ class WordCloudGenerator:
 
     def generate_wordcloud(self, text: str) -> WordCloud:
         """Генерация облака слов"""
-        # Предобработка текста
         processed_text = self.preprocess_text(text)
         processed_text = self.remove_stopwords(processed_text)
 
-        # Настройки для WordCloud
         wordcloud_params = {
             'width': self.width,
             'height': self.height,
@@ -71,7 +66,6 @@ class WordCloudGenerator:
             'random_state': 42
         }
 
-        # Создание облака слов
         wordcloud = WordCloud(**wordcloud_params)
         wordcloud.generate(processed_text)
 
@@ -79,10 +73,8 @@ class WordCloudGenerator:
 
     def wordcloud_to_base64(self, wordcloud: WordCloud, format: str = 'png') -> str:
         """Конвертация облака слов в base64"""
-        # Создание изображения в памяти
         buffer = BytesIO()
 
-        # Сохранение в буфер
         plt.figure(figsize=(self.width / 100, self.height / 100), dpi=100)
         plt.imshow(wordcloud, interpolation='bilinear')
         plt.axis('off')
@@ -92,7 +84,6 @@ class WordCloudGenerator:
                     facecolor=self.background_color)
         plt.close()
 
-        # Конвертация в base64
         buffer.seek(0)
         image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
 
@@ -101,16 +92,37 @@ class WordCloudGenerator:
 
 def generate_word_cloud_api(text: str, width: int = 800, height: int = 400) -> Dict[str, Any]:
     try:
-        # Инициализация генератора
+        try:
+            if not text or not isinstance(text, str):
+                raise ValueError("Текст должен быть непустой строкой")
+
+            if len(text.strip()) < 10:
+                raise ValueError("Текст слишком короткий (минимум 10 символов)")
+
+            if len(text) > 100000:
+                raise ValueError("Текст слишком длинный (максимум 100000 символов)")
+
+            if width < 100 or height < 100:
+                raise ValueError(f"Размер изображения слишком мал: минимальный размер 100x100 пикселей")
+
+            if width > 4000 or height > 4000:
+                raise ValueError(f"Размер изображения слишком велик: максимальный размер 4000x4000 пикселей")
+
         generator = WordCloudGenerator(width=width, height=height)
 
-        # Генерация облака слов
-        wordcloud = generator.generate_wordcloud(text)
+        try:
+            wordcloud = generator.generate_wordcloud(text, mask_path)
+        except ValueError as e:
+            raise RuntimeError(f"Ошибка генерации облака слов: {str(e)}")
 
-        # Конвертация в base64
-        image_base64 = generator.wordcloud_to_base64(wordcloud)
+        if not hasattr(wordcloud, 'words_') or not wordcloud.words_:
+            raise RuntimeError("Не удалось сгенерировать облако слов: текст не содержит значимых слов после обработки")
 
-        # Формирование ответа согласно спецификации
+        try:
+            image_base64 = generator.wordcloud_to_base64(wordcloud)
+        except Exception as e:
+            raise RuntimeError(f"Ошибка конвертации изображения: {str(e)}")
+
         response = {
             "success": True,
             "data": {
@@ -124,10 +136,62 @@ def generate_word_cloud_api(text: str, width: int = 800, height: int = 400) -> D
 
         return response
 
-    except Exception as e:
-        # Обработка ошибок
+
+    except ValueError as e:
         return {
             "success": False,
             "data": None,
-            "error": str(e)
+            "error": {
+                "type": "VALIDATION_ERROR",
+                "message": str(e),
+                "details": f"Некорректные входные параметры: {str(e)}"
+            }
+        }
+
+    except RuntimeError as e:
+        return {
+            "success": False,
+            "data": None,
+            "error": {
+                "type": "GENERATION_ERROR",
+                "message": str(e),
+                "details": f"Ошибка при создании облака слов: {str(e)}"
+            }
+        }
+
+    except ImportError as e:
+        return {
+            "success": False,
+            "data": None,
+            "error": {
+                "type": "DEPENDENCY_ERROR",
+                "message": "Отсутствует необходимая библиотека",
+                "details": f"Требуемые библиотеки: wordcloud, matplotlib. Ошибка: {str(e)}"
+            }
+        }
+
+    except MemoryError as e:
+        return {
+            "success": False,
+            "data": None,
+            "error": {
+                "type": "MEMORY_ERROR",
+                "message": "Недостаточно памяти для обработки",
+                "details": "Попробуйте уменьшить размер текста или изображения"
+            }
+        }
+
+
+    except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        return {
+            "success": False,
+            "data": None,
+            "error": {
+                "type": "UNEXPECTED_ERROR",
+                "message": "Внутренняя ошибка сервера",
+                "details": f"Неизвестная ошибка: {str(e)}",
+                "traceback": error_trace[:500]
+            }
         }
