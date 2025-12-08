@@ -127,10 +127,8 @@ def generate_word_cloud_api(text: str, width: int = 800, height: int = 400) -> D
             if width > 4000 or height > 4000:
                 raise ValueError(f"Размер изображения слишком велик: максимальный размер 4000x4000 пикселей")
 
-        generator = WordCloudGenerator(width=width, height=height)
-
-        try:
-            wordcloud = generator.generate_wordcloud(text, mask_path)
+            generator = WordCloudGenerator(width=width, height=height)
+            wordcloud = generator.generate_wordcloud(text)
         except ValueError as e:
             raise RuntimeError(f"Ошибка генерации облака слов: {str(e)}")
 
