@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import re
 import base64
@@ -19,7 +21,14 @@ class WordCloudGenerator:
         self.height = height
         self.background_color = background_color
         self.max_words = max_words
+        self._download_nltk_resources()
+        self.morph = MorphAnalyzer()
 
+    def _download_nltk_resources(self):
+        try:
+            nltk.download('stopwords', quiet=True)
+        except:
+            print("Failed to download nltk resources")
 
     def preprocess_text(self, text: str) -> str:
         """Предобработка текста"""
@@ -29,17 +38,24 @@ class WordCloudGenerator:
 
         text = re.sub(r'\s+', ' ', text).strip()
 
-        morph = MorphAnalyzer()
-        lemms = [morph.parse(i)[0].normal_form for i in text]
+        words = text.split()
 
-        return lemms
+        if hasattr(self.morph, 'lemmatize'):
+            lemmas = [self.morph.lemmatize(word)[0] for word in words if word.strip()]
+        else:
+            lemmas = [self.morph.parse(word)[0].normal_form for word in words if word.strip()]
+
+        return ' '.join(lemmas)
 
     def remove_stopwords(self, text: str, custom_stopwords: list = None) -> str:
         """Удаление стоп-слов"""
-
-        nltk.download('stopwords')
-        stopwords_en = set(stopwords.words('english'))
-        stopwords_ru = set(stopwords.words('russian'))
+        try:
+            stopwords_en = set(stopwords.words('english'))
+            stopwords_ru = set(stopwords.words('russian'))
+        except LookupError:
+            self._download_nltk_resources()
+            stopwords_en = set(stopwords.words('english'))
+            stopwords_ru = set(stopwords.words('russian'))
         additional_words = ['очень', 'которые', 'это', 'ещё', 'также', 'который', 'например']
         combined_stopwords = stopwords_en.union(stopwords_ru).union(additional_words)
 
@@ -76,16 +92,19 @@ class WordCloudGenerator:
         buffer = BytesIO()
 
         plt.figure(figsize=(self.width / 100, self.height / 100), dpi=100)
+        fig = plt.figure(figsize=(self.width / 100, self.height / 100), dpi=100)
         plt.imshow(wordcloud, interpolation='bilinear')
         plt.axis('off')
         plt.tight_layout(pad=0)
 
         plt.savefig(buffer, format=format, bbox_inches='tight', pad_inches=0,
                     facecolor=self.background_color)
-        plt.close()
+        plt.close(fig)
+        plt.close('all')
 
         buffer.seek(0)
         image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+        buffer.close()
 
         return f"data:image/{format};base64,{image_base64}"
 

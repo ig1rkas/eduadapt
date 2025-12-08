@@ -19,4 +19,3 @@ SMPT_SERVER = 'smtp.mail.ru'
 SMPT_PORT = 587
 EMAIL_FROM = 'phislab@mail.ru'
 EMAIL_PASSWORT = 'HVCyNvXts94YfrWz6Kes'
-EXPIRY_MINUTES = 3
